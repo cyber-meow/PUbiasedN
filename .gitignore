@@ -105,3 +105,4 @@ running_results/
 plots/
 *.png
 *.swp
+*.p
