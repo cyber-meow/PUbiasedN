@@ -55,10 +55,10 @@ pn = False
 pnu = False
 
 sets_save_name = None
-sets_load_name = 'sets_n_rho015.p'
+sets_load_name = 'pickle/sets_n_rho015.p'
 
 dre_save_name = None
-dre_load_name = 'dre_model_n_rho015.p'
+dre_load_name = 'pickle/dre_model_n_rho015.p'
 
 
 params = OrderedDict([

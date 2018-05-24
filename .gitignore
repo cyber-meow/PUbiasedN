@@ -106,3 +106,5 @@ plots/
 *.png
 *.swp
 *.p
+tmp/
+pickle/
