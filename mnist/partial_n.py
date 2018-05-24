@@ -1,28 +1,107 @@
-import sys
 import argparse
 import numpy as np
-from copy import deepcopy
+import pickle
+from collections import OrderedDict
 
 import torch
 import torch.utils.data
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
 import torchvision
 import torchvision.transforms as transforms
 
+import training
+import settings
 
-pn_num = 1600
-u_num = 60000
+
+p_num = 1000
+sn_num = 5000
+u_num = 30000
+
+pv_num = 100
+snv_num = 500
+uv_num = 3000
+
+u_cut = 40000
+
 pi = 0.49
-pho = 0.8
+rho = 0.15
+sn_prob = 1/2
+non_pu_fraction = 0.8
+sep_value = 0.3
 
-training_epochs = 200
-pn_batch_size = 160
-u_batch_size = 6000
+dre_training_epochs = 50
+cls_training_epochs = 100
+
+p_batch_size = 100
+sn_batch_size = 500
+u_batch_size = 3000
+
+learning_rate_dre = 1e-4
+learning_rate_cls = 1e-3
+weight_decay = 1e-4
+validation_momentum = 0.5
+
+nn_threshold = 0
+nn_rate = 1/3
+
+partial_n = True
+pu_partial_n = False
+partial_n_kai = False
+pu_partial_n_kai = False
+
+pu = False
+pn = False
+pnu = False
+
+sets_save_name = None
+sets_load_name = 'sets_n_rho015.p'
+
+dre_save_name = None
+dre_load_name = 'dre_model_n_rho015.p'
 
 
-parser = argparse.ArgumentParser(description='MMD matching PU')
+params = OrderedDict([
+    ('p_num', p_num),
+    ('sn_num', sn_num),
+    ('u_num', u_num),
+    ('\npv_num', pv_num),
+    ('snv_num', snv_num),
+    ('uv_num', uv_num),
+    ('\npi', pi),
+    ('rho', rho),
+    ('non_pu_fraction', non_pu_fraction),
+    ('sep_value', sep_value),
+    ('\ndre_training_epochs', dre_training_epochs),
+    ('cls_training_epochs', cls_training_epochs),
+    ('\np_batch_size', p_batch_size),
+    ('sn_batch_size', p_batch_size),
+    ('u_batch_size', u_batch_size),
+    ('\nlearning_rate_dre', learning_rate_dre),
+    ('learning_rate_cls', learning_rate_cls),
+    ('weight_decay', weight_decay),
+    ('validation_momentum', validation_momentum),
+    ('\nnn_threshold', nn_threshold),
+    ('nn_rate', nn_rate),
+    ('\npartial_n', partial_n),
+    ('pu_partial_n', pu_partial_n),
+    ('partial_n_kai', partial_n_kai),
+    ('pu_partial_n_kai', pu_partial_n_kai),
+    ('\npu', pu),
+    ('pn', pn),
+    ('pnu', pnu),
+    ('\nsets_save_name', sets_save_name),
+    ('sets_load_name', sets_load_name),
+    ('dre_save_name', dre_save_name),
+    ('dre_load_name', dre_load_name),
+])
+
+for key, value in params.items():
+    print('{}: {}'.format(key, value))
+print('')
+
+
+parser = argparse.ArgumentParser(description='MNIST partial n')
 
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
@@ -30,7 +109,7 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
-dtype = torch.cuda.FloatTensor if args.cuda else torch.FloatTensor
+settings.dtype = torch.cuda.FloatTensor if args.cuda else torch.FloatTensor
 
 
 # torchvision.datasets.MNIST outputs a set of PIL images
@@ -40,172 +119,98 @@ transform = transforms.Compose(
 
 # Load and transform data
 mnist = torchvision.datasets.MNIST(
-    './data', train=True, download=True, transform=transform)
+    './data/MNIST', train=True, download=True, transform=transform)
 
 mnist_test = torchvision.datasets.MNIST(
-    './data', train=False, download=True, transform=transform)
+    './data/MNIST', train=False, download=True, transform=transform)
 
 
-train_data = mnist.train_data.numpy()
-train_labels = mnist.train_labels.numpy()
-# pn_idxs = np.argwhere(train_labels % 2 == 0).reshape(-1)
-pn_idxs = np.argwhere(
-    np.logical_or(train_labels % 2 == 0, train_labels < 6)).reshape(-1)
-selected_pn = np.random.choice(pn_idxs, pn_num, replace=False)
-
-u_idxs = np.random.choice(60000, u_num, replace=False)
-
-pn_data = train_data[selected_pn]
-pn_labels = train_labels[selected_pn]
-pn_labels[pn_labels % 2 == 1] = -1
-pn_labels[pn_labels % 2 == 0] = 1
-
-pn_set = torch.utils.data.TensorDataset(
-    torch.from_numpy(pn_data).unsqueeze(1).float(),
-    torch.from_numpy(pn_labels).unsqueeze(1).float())
-
-u_set = torch.utils.data.TensorDataset(
-    mnist.train_data[u_idxs].unsqueeze(1).float())
-
-test_labels = deepcopy(mnist_test.test_labels)
-test_labels[test_labels % 2 == 1] = -1
-test_labels[test_labels % 2 == 0] = 1
-
-test_set = torch.utils.data.TensorDataset(
-    mnist_test.test_data.unsqueeze(1).float(),
-    test_labels.unsqueeze(1).float())
-
-test_labels = deepcopy(mnist_test.test_labels)
-test_labels[test_labels == 7] = -1
-test_labels[test_labels == 9] = -1
-test_labels[test_labels != -1] = 1
-print(torch.sum(test_labels))
-
-test_set2 = torch.utils.data.TensorDataset(
-    mnist_test.test_data.unsqueeze(1).float(),
-    test_labels.unsqueeze(1).float())
+def pick_p_data(data, labels, n):
+    p_idxs = np.argwhere(labels % 2 == 0).reshape(-1)
+    selected_p = np.random.choice(p_idxs, n, replace=False)
+    return data[selected_p]
 
 
-class Classifier(object):
+def pick_sn_data(data, labels, n):
+    # sn_idxs = np.argwhere(
+    #     np.logical_and(labels % 2 == 1, labels < 6)).reshape(-1)
+    sn_idxs = np.argwhere(labels % 2 == 1).reshape(-1)
+    selected_sn = np.random.choice(sn_idxs, n, replace=False)
+    return data[selected_sn]
 
-    def __init__(self, model, pi=0.49, pho=0.8,
-                 lr=5e-3, weight_decay=1e-2, dr_model=None):
-        self.model = model
-        self.lr = lr
-        self.weight_decay = weight_decay
-        self.dr_model = dr_model
 
-        self.pi = pi
-        self.pho = pho
-        self.test_accuracies = []
-        self.init_optimizer()
+def pick_u_data(data, n):
+    selected_u = np.random.choice(len(data), n, replace=False)
+    return data[selected_u]
 
-        self.times = 0
 
-    def init_optimizer(self):
-        self.optimizer = optim.Adam(
-            self.model.parameters(),
-            lr=self.lr, weight_decay=self.weight_decay)
+train_data = mnist.train_data
+train_labels = mnist.train_labels
+idxs = np.random.permutation(len(train_data))
 
-    def train(self, pn_set, u_set, test_set,
-              pn_batch_size, u_batch_size, num_epochs,
-              test_interval=1, print_interval=1):
+valid_data = train_data[idxs][u_cut:]
+valid_labels = train_labels[idxs][u_cut:]
+train_data = train_data[idxs][:u_cut]
+train_labels = train_labels[idxs][:u_cut]
 
-        self.init_optimizer()
-        self.test(test_set, True)
 
-        pn_loader = torch.utils.data.DataLoader(
-            pn_set, batch_size=pn_batch_size,
-            shuffle=True, num_workers=2)
+if sets_load_name is None:
+    p_set = torch.utils.data.TensorDataset(
+        pick_p_data(train_data, train_labels, p_num).unsqueeze(1))
 
-        u_loader = torch.utils.data.DataLoader(
-            u_set, batch_size=u_batch_size,
-            shuffle=True, num_workers=2)
+    sn_set = torch.utils.data.TensorDataset(
+        pick_sn_data(train_data, train_labels, sn_num).unsqueeze(1))
 
-        for epoch in range(num_epochs):
+    selected_u = np.random.choice(len(train_data), u_num, replace=False)
+    u_set = torch.utils.data.TensorDataset(
+        train_data[selected_u].unsqueeze(1))
+    u_set_labels = torch.utils.data.TensorDataset(
+        train_data[selected_u].unsqueeze(1),
+        train_labels[selected_u].unsqueeze(1))
 
-            total_loss = self.train_step(pn_loader, u_loader)
+    u_set = torch.utils.data.TensorDataset(
+        pick_u_data(train_data, u_num).unsqueeze(1))
 
-            if (epoch+1) % test_interval == 0 or epoch+1 == num_epochs:
+    if sets_save_name is not None:
+        pickle.dump((p_set, sn_set, u_set), open(sets_save_name, 'wb'))
 
-                to_print = (epoch+1) % print_interval == 0
-                if to_print:
-                    sys.stdout.write('Epoch: {}  '.format(epoch))
-                    print('Train Loss: {:.6f}'.format(total_loss))
-                self.test(test_set, to_print)
+if sets_load_name is not None:
+    p_set, sn_set, u_set = pickle.load(open('sets_n.p', 'rb'))
 
-    def train_step(self, pn_loader, u_loader):
-        self.model.train()
-        total_loss = 0
-        compute_loss = (self.compute_loss_density
-                        if self.dr_model is None
-                        else self.compute_loss_weighted)
-        for (x, target) in pn_loader:
-            self.optimizer.zero_grad()
-            ux = next(iter(u_loader))[0]
-            loss = compute_loss(x, target, ux)
-            total_loss += loss.item()
-            loss = loss
-            loss.backward()
-            self.optimizer.step()
-        return total_loss
 
-    def basic_loss(self, fx):
-        if self.times < 2:
-            negative_logistic = nn.LogSigmoid()
-            return -negative_logistic(fx)
-        else:
-            sigmoid = nn.Sigmoid()
-            return sigmoid(-fx)
+p_validation = pick_p_data(valid_data, valid_labels, pv_num).unsqueeze(1)
+sn_validation = pick_sn_data(valid_data, valid_labels, snv_num).unsqueeze(1)
+u_validation = pick_u_data(valid_data, uv_num).unsqueeze(1)
 
-    def compute_loss(self, pnx, target, ux):
-        fpnx = self.model(pnx.type(dtype))
-        fux = self.model(ux.type(dtype))
-        # fpx = fpnx[target == 1]
-        # print(torch.mean(F.sigmoid(fpnx)).item(),
-        #       torch.mean(F.sigmoid(fux)).item())
-        pn_loss = self.pho * torch.mean(self.basic_loss(fpnx))
-        n_loss = (torch.mean(self.basic_loss(-fux))
-                  - self.pho * torch.mean(self.basic_loss(-fpnx)))
-        loss = pn_loss + n_loss if n_loss > 0 else -n_loss
-        return loss.cpu()
 
-    def compute_loss_weighted(self, pnx, target, ux):
-        fpnx = self.model(pnx.type(dtype))
-        fux = self.model(ux.type(dtype))
-        fux_prob = F.sigmoid(self.dr_model(ux.type(dtype)))
-        loss = (
-            self.pho * torch.mean(self.basic_loss(fpnx * target.type(dtype)))
-            + torch.mean(self.basic_loss(-fux) * (1-fux_prob)))
-        return loss.cpu()
+test_data = mnist_test.test_data
+test_labels = mnist_test.test_labels
 
-    def compute_loss_density(self, pnx, target, ux):
-        fpnx = F.sigmoid(self.model(pnx.type(dtype)))
-        fux = F.sigmoid(self.model(ux.type(dtype)))
-        # print(torch.mean(F.sigmoid(fpnx)).item(),
-        #       torch.mean(F.sigmoid(fux)).item())
-        loss = torch.mean(fux**2)/2 - torch.mean(fpnx)*self.pho
-        loss = loss if loss > -self.pho/2 else -loss/10
-        return loss.cpu()
+test_posteriors = torch.zeros(test_labels.size())
+test_posteriors[test_labels % 2 == 0] = 1
+# test_posteriors[test_labels % 2 == 1] = -1
+test_posteriors[test_labels == 1] = sn_prob
+test_posteriors[test_labels == 3] = sn_prob
+test_posteriors[test_labels == 5] = sn_prob
+test_posteriors[test_labels == 7] = 0
+test_posteriors[test_labels == 9] = 0
 
-    def test(self, test_set, to_print=True):
-        self.model.eval()
-        x = test_set.tensors[0].type(dtype)
-        target = test_set.tensors[1].type(dtype)
-        output = self.model(x)
-        pred = torch.sign(output)
-        correct = torch.sum(pred.eq(target).float()).item()
-        accuracy = 100 * correct/len(test_set)
-        self.test_accuracies.append(accuracy)
-        if to_print:
-            print('Test set: Accuracy: {}/{} ({:.2f}%)'.format(
-                    correct, len(test_set), accuracy))
+test_set_dre = torch.utils.data.TensorDataset(
+    test_data.unsqueeze(1), test_posteriors.unsqueeze(1))
+
+t_labels = torch.zeros(test_labels.size())
+t_labels[test_labels % 2 == 0] = 1
+t_labels[test_labels % 2 == 1] = -1
+
+test_set_cls = torch.utils.data.TensorDataset(
+    test_data.unsqueeze(1), t_labels.unsqueeze(1))
 
 
 class Net(nn.Module):
 
-    def __init__(self):
+    def __init__(self, sigmoid_output=False):
         super(Net, self).__init__()
+        self.sigmoid_output = sigmoid_output
         self.conv1 = nn.Conv2d(1, 5, 5, 1)
         self.conv2 = nn.Conv2d(5, 10, 5, 1)
         self.fc1 = nn.Linear(4*4*10, 40)
@@ -220,14 +225,122 @@ class Net(nn.Module):
         x = F.relu(self.fc1(x))
         x = F.dropout(x, training=self.training)
         x = self.fc2(x)
+        if self.sigmoid_output:
+            x = F.sigmoid(x)
         return x
 
 
-model = Net().cuda() if args.cuda else Net()
-cls = Classifier(model, pi=pi, pho=pho)
-cls.train(pn_set, u_set, test_set2, pn_batch_size, u_batch_size, 50)
+if partial_n or pu_partial_n:
+    if dre_load_name is None:
+        print('')
+        model = Net(True).cuda() if args.cuda else Net(True)
+        dre = training.PosteriorProbability(
+                model, pi=pi, rho=rho,
+                lr=learning_rate_dre, weight_decay=weight_decay)
+        dre.train(p_set, sn_set, u_set, test_set_dre,
+                  p_batch_size, sn_batch_size, u_batch_size,
+                  p_validation, sn_validation, u_validation,
+                  dre_training_epochs)
+        if dre_save_name is not None:
+            pickle.dump(dre.model, open(dre_save_name, 'wb'))
 
-print('')
-model = Net().cuda() if args.cuda else Net()
-cls2 = Classifier(model, pi=pi, dr_model=cls.model)
-cls2.train(pn_set, u_set, test_set, pn_batch_size, u_batch_size, 100)
+    # model = Net().cuda() if args.cuda else Net()
+    # dre = training.PUClassifier3(
+    #         model, pi=pi, rho=rho,
+    #         lr=learning_rate_cls, weight_decay=weight_decay)
+    # dre.train(p_set, sn_set, u_set, test_set_dre,
+    #           p_batch_size, sn_batch_size, u_batch_size,
+    #           p_validation, sn_validation, u_validation, cls_training_epochs)
+
+    if dre_load_name is not None:
+        dre_model = pickle.load(open(dre_load_name, 'rb'))
+
+    if partial_n:
+        print('')
+        model = Net().cuda() if args.cuda else Net()
+        cls = training.WeightedClassifier(
+                model, dre_model, pi=pi, rho=rho, sep_value=sep_value,
+                lr=learning_rate_cls, weight_decay=weight_decay)
+        cls.train(p_set, sn_set, u_set, test_set_cls,
+                  p_batch_size, sn_batch_size, u_batch_size,
+                  p_validation, sn_validation, u_validation,
+                  cls_training_epochs)
+
+    if pu_partial_n:
+        print('')
+        model = Net().cuda() if args.cuda else Net()
+        cls = training.PUWeightedClassifier(
+                model, dre_model, pi=pi, rho=rho,
+                lr=learning_rate_cls, weight_decay=weight_decay,
+                weighted_fraction=non_pu_fraction,
+                nn=True, nn_threshold=0, nn_rate=nn_rate)
+        cls.train(p_set, sn_set, u_set, test_set_cls,
+                  p_batch_size, sn_batch_size, u_batch_size,
+                  p_validation, sn_validation, u_validation,
+                  cls_training_epochs)
+
+if partial_n_kai or pu_partial_n_kai:
+    # print('')
+    # model = Net(True).cuda() if args.cuda else Net(True)
+    # dre = training.PosteriorProbability2(
+    #         model, pi=rho,
+    #         lr=learning_rate_dre, weight_decay=weight_decay)
+    # dre.train(sn_set, u_set, test_set_dre, sn_batch_size, u_batch_size,
+    #           sn_validation, u_validation, dre_training_epochs)
+    # pickle.dump(dre.model, open('dre_model.p', 'wb'))
+
+    dre_model = pickle.load(open('dre_model.p', 'rb'))
+
+    if partial_n_kai:
+        print('')
+        model = Net().cuda() if args.cuda else Net()
+        cls = training.WeightedClassifier2(
+                model, dre_model, pi=pi, rho=rho,
+                lr=learning_rate_cls, weight_decay=weight_decay,
+                nn=True, nn_threshold=nn_threshold, nn_rate=nn_rate)
+        cls.train(p_set, sn_set, u_set, test_set_cls,
+                  p_batch_size, sn_batch_size, u_batch_size,
+                  p_validation, sn_validation, u_validation,
+                  cls_training_epochs)
+
+    if pu_partial_n_kai:
+        print('')
+        model = Net().cuda() if args.cuda else Net()
+        cls = training.PUWeightedClassifier2(
+                model, dre_model, pi=pi, rho=rho,
+                lr=learning_rate_cls, weight_decay=weight_decay,
+                weighted_fraction=non_pu_fraction,
+                nn=True, nn_threshold=nn_threshold, nn_rate=nn_rate)
+        cls.train(p_set, sn_set, u_set, test_set_cls,
+                  p_batch_size, sn_batch_size, u_batch_size,
+                  p_validation, sn_validation, u_validation,
+                  cls_training_epochs)
+
+if pu:
+    print('')
+    model = Net().cuda() if args.cuda else Net()
+    cls = training.PUClassifier(
+            model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay,
+            nn=True, nn_threshold=0, nn_rate=nn_rate)
+    cls.train(p_set, u_set, test_set_cls, p_batch_size, u_batch_size,
+              p_validation, u_validation, cls_training_epochs)
+
+if pn:
+    print('')
+    model = Net().cuda() if args.cuda else Net()
+    cls = training.PNClassifier(
+            model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay)
+    cls.train(p_set, sn_set, test_set_cls, p_batch_size, sn_batch_size,
+              p_validation, sn_validation, cls_training_epochs)
+
+if pnu:
+    print('')
+    model = Net().cuda() if args.cuda else Net()
+    cls = training.PNUClassifier(
+            model, pi=pi,
+            lr=learning_rate_cls, weight_decay=weight_decay,
+            pn_fraction=non_pu_fraction,
+            nn=True, nn_threshold=0, nn_rate=nn_rate)
+    cls.train(p_set, sn_set, u_set, test_set_cls,
+              p_batch_size, sn_batch_size, u_batch_size,
+              p_validation, sn_validation, u_validation, cls_training_epochs)

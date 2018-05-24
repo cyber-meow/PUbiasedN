@@ -22,7 +22,7 @@ def read_directory(dir_name):
             va_perss.append(va_pers)
             lossess.append(losses)
     plt.figure()
-    plt.title('test error')
+    plt.title('test error/accuracy')
     for i, pers in enumerate(perss):
         plt.plot(pers, label=names[i])
     plt.legend()
@@ -45,6 +45,10 @@ def read_one_file(filename):
     va_pers = []
     losses = []
     for i, line in enumerate(content):
+        if line == '\n':
+            pers = []
+            va_pers = []
+            losses = []
         if line.startswith('pp'):
             a = line.split()
             pers.append(float(a[2]))
@@ -54,12 +58,17 @@ def read_one_file(filename):
         if line.startswith('Test set: Error:'):
             a = line.split()
             pers.append(float(a[3]))
+        if line.startswith('Test set: Accuracy:'):
+            pers.append(float(line[-8:-3]))
         if line.startswith('valid') and content[i+1].startswith('Epoch'):
             a = line.split()
             if len(va_pers) <= 2:
                 va_pers.append(float(a[1]))
             else:
                 va_pers.append(float(a[1])*1+va_pers[-1]*0)
+        if line.startswith('Validation') and content[i+1].startswith('Epoch'):
+            a = line.split()
+            va_pers.append(float(a[2]))
         if line.startswith('Epoch'):
             a = line.split()
             losses.append(float(a[4]))

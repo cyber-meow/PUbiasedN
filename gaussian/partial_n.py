@@ -70,6 +70,9 @@ params = OrderedDict([
     ('nn_threshold', nn_threshold),
     ('nn_rate', nn_rate),
     ('sigmoid_output', sigmoid_output),
+    ('\npartial_n', partial_n),
+    ('pu', pu),
+    ('pu_then_pn', pu_then_pn),
 ])
 
 for key, value in params.items():
@@ -164,6 +167,7 @@ plt.pause(0.05)
 
 
 if partial_n:
+    print('')
     model = nets.Net(sigmoid_output=sigmoid_output)
     if args.cuda:
         model = model.cuda()
