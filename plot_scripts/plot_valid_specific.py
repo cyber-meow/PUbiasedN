@@ -10,7 +10,8 @@ def read_directory(dir_name):
 
     to_plot = {}
     names = ['partial_n', 'pu_partial_n', 'minus_pu_partial_n',
-             'nnpu', 'nnpnu', 'pn', 'sep_partial_n']
+             'nnpu', 'nnpnu', 'pn', 'sep_partial_n',
+             'pu+n', 'pu+-n', 'pu_then_pn']
 
     for f in listdir(dir_name):
         if f != 'all' and isfile(join(dir_name, f)):

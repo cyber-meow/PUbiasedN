@@ -231,7 +231,7 @@ class Classifier_from3(Classifier):
 
         sn_loader = torch.utils.data.DataLoader(
             sn_set, batch_size=sn_batch_size,
-            shuffle=True, num_workers=1)
+            shuffle=True, num_workers=0)
 
         u_loader = torch.utils.data.DataLoader(
             u_set, batch_size=u_batch_size,
@@ -275,11 +275,14 @@ class Classifier_from3(Classifier):
 
 class PUClassifier3(Classifier_from3):
 
-    def __init__(self, model, nn=True, nn_threshold=0, nn_rate=1/2,
+    def __init__(self, model,
+                 nn=True, nn_threshold=0, nn_rate=1/2, prob_est=False,
                  *args, **kwargs):
         self.nn_rate = nn_rate
         self.nn_threshold = nn_threshold
         self.nn = nn
+        if prob_est:
+            self.test = self.test_prob_est
         super().__init__(model, *args, **kwargs)
 
     def compute_loss(self, px, snx, ux, convex, validation=False):
@@ -297,7 +300,7 @@ class PUClassifier3(Classifier_from3):
             loss = -n_loss * self.nn_rate
         return loss.cpu(), true_loss.cpu()
 
-    def test(self, test_set, to_print=True):
+    def test_prob_est(self, test_set, to_print=True):
         self.model.eval()
         x = F.sigmoid(test_set.tensors[0].type(settings.dtype))
         target = test_set.tensors[1]
@@ -307,6 +310,55 @@ class PUClassifier3(Classifier_from3):
         error = torch.mean((target-output)**2).item()
         if to_print:
             print('Test set: Error: {}'.format(error))
+
+
+class PUClassifierPlusN(Classifier_from3):
+
+    def __init__(self, model,
+                 nn=True, nn_threshold=0, nn_rate=1/2, minus_n=True,
+                 *args, **kwargs):
+        self.nn_rate = nn_rate
+        self.nn_threshold = nn_threshold
+        self.nn = nn
+        self.minus_n = minus_n
+        super().__init__(model, *args, **kwargs)
+
+    def train_step(self, p_loader, sn_loader, u_loader,
+                   p_validation, sn_validation, u_validation, convex):
+        losses = []
+        for x in p_loader:
+            self.model.train()
+            self.optimizer.zero_grad()
+            snx = next(iter(sn_loader))[0]
+            snx2 = next(iter(sn_loader))[0]
+            ux = next(iter(u_loader))[0]
+            loss, true_loss = self.compute_loss(x[0], snx, snx2, ux, convex)
+            losses.append(true_loss.item())
+            loss.backward()
+            self.optimizer.step()
+            self.validation(
+                p_validation, sn_validation, sn_validation,
+                u_validation, convex)
+        return np.mean(np.array(losses))
+
+    def compute_loss(self, px, snx, snx2, ux, convex, validation=False):
+        fpx = self.model(px.type(settings.dtype))
+        fsnx = self.model(snx.type(settings.dtype))
+        fux = self.model(ux.type(settings.dtype))
+        p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
+        sn_loss = self.rho * torch.mean(self.basic_loss(-fsnx, convex))
+        n_loss = (torch.mean(self.basic_loss(-fux, convex))
+                  - self.pi * torch.mean(self.basic_loss(-fpx, convex)))
+        if self.minus_n:
+            fsnx2 = self.model(snx2.type(settings.dtype))
+            n_loss -= self.rho * torch.mean(self.basic_loss(-fsnx2, convex))
+        if not validation:
+            print(n_loss.item())
+        true_loss = p_loss + sn_loss + n_loss
+        loss = true_loss
+        if self.nn and n_loss < self.nn_threshold:
+            loss = -n_loss * self.nn_rate
+        return loss.cpu(), true_loss.cpu()
 
 
 class PNUClassifier(Classifier_from3):

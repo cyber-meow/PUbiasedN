@@ -31,6 +31,7 @@ pi = 0.49
 rho = 0.15
 
 neg_ps = [0.6, 0.15, 0.03, 0.2, 0.02]
+# neg_ps = [1/3, 1/3, 1/3, 0, 0]
 
 non_pu_fraction = 0.8
 
@@ -59,16 +60,20 @@ pu_partial_n = False
 partial_n_kai = False
 pu_partial_n_kai = False
 
+pu_plus_n = False
+minus_n = False
+pu_then_pn = True
+
 pu = False
-pn = True
+pn = False
 pnu = False
 
 # sets_save_name = None
-sets_load_name = 'pickle/1000_1000_10000/sets_n_rho015_imbN_2.p'
+sets_load_name = 'pickle/1000_1000_10000/sets_n_rho015_imbN.p'
 sets_save_name = None
 
 # dre_save_name = None
-dre_load_name = 'pickle/1000_1000_10000/dre_model_n_rho015_imbN_2.p'
+dre_load_name = 'pickle/1000_1000_10000/dre_model_n_rho02_imbN.p'
 dre_save_name = None
 
 
@@ -104,6 +109,9 @@ params = OrderedDict([
     ('pu_partial_n', pu_partial_n),
     ('partial_n_kai', partial_n_kai),
     ('pu_partial_n_kai', pu_partial_n_kai),
+    ('\npu_plus_n', pu_plus_n),
+    ('minus_n', minus_n),
+    ('pu_then_pn', pu_then_pn),
     ('\npu', pu),
     ('pn', pn),
     ('pnu', pnu),
@@ -274,6 +282,14 @@ test_set_cls = torch.utils.data.TensorDataset(
     test_data.unsqueeze(1), t_labels.unsqueeze(1))
 
 
+t_labels = torch.zeros(test_labels.size())
+t_labels[test_posteriors > 1/2] = 1
+t_labels[test_posteriors <= 1/2] = -1
+
+test_set_pre_cls = torch.utils.data.TensorDataset(
+    test_data.unsqueeze(1), t_labels.unsqueeze(1))
+
+
 class Net(nn.Module):
 
     def __init__(self, sigmoid_output=False):
@@ -344,7 +360,7 @@ if partial_n or pu_partial_n:
                 model, dre_model, pi=pi, rho=rho,
                 lr=learning_rate_cls, weight_decay=weight_decay,
                 weighted_fraction=non_pu_fraction,
-                nn=True, nn_threshold=0, nn_rate=nn_rate)
+                nn=True, nn_threshold=nn_threshold, nn_rate=nn_rate)
         cls.train(p_set, sn_set, u_set, test_set_cls,
                   p_batch_size, sn_batch_size, u_batch_size,
                   p_validation, sn_validation, u_validation,
@@ -387,12 +403,47 @@ if partial_n_kai or pu_partial_n_kai:
                   p_validation, sn_validation, u_validation,
                   cls_training_epochs)
 
+if pu_plus_n:
+    print('')
+    model = Net().cuda() if args.cuda else Net()
+    cls = training.PUClassifierPlusN(
+            model, pi=pi, rho=rho,
+            lr=learning_rate_cls, weight_decay=weight_decay,
+            nn=True, nn_threshold=nn_threshold, nn_rate=nn_rate,
+            minus_n=minus_n)
+    cls.train(p_set, sn_set, u_set, test_set_cls,
+              p_batch_size, sn_batch_size, u_batch_size,
+              p_validation, sn_validation, u_validation,
+              cls_training_epochs)
+
+
+if pu_then_pn:
+    print('')
+    model = Net().cuda() if args.cuda else Net()
+    cls = training.PUClassifier3(
+            model, pi=pi, rho=rho,
+            lr=learning_rate_cls, weight_decay=weight_decay,
+            nn=True, nn_threshold=nn_threshold, nn_rate=nn_rate)
+    cls.train(p_set, sn_set, u_set, test_set_pre_cls,
+              p_batch_size, sn_batch_size, u_batch_size,
+              p_validation, sn_validation, u_validation,
+              dre_training_epochs)
+
+    print('')
+    model = Net().cuda() if args.cuda else Net()
+    cls2 = training.PNClassifier(
+            model, pi=pi/(pi+rho), pu_model=cls.model,
+            lr=learning_rate_cls, weight_decay=weight_decay)
+    cls2.train(p_set, sn_set, test_set_cls, p_batch_size, sn_batch_size,
+               p_validation, sn_validation, cls_training_epochs)
+
+
 if pu:
     print('')
     model = Net().cuda() if args.cuda else Net()
     cls = training.PUClassifier(
             model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay,
-            nn=True, nn_threshold=0, nn_rate=nn_rate)
+            nn=True, nn_threshold=nn_threshold, nn_rate=nn_rate)
     cls.train(p_set, u_set, test_set_cls, p_batch_size, u_batch_size,
               p_validation, u_validation, cls_training_epochs)
 
@@ -411,7 +462,7 @@ if pnu:
             model, pi=pi,
             lr=learning_rate_cls, weight_decay=weight_decay,
             pn_fraction=non_pu_fraction,
-            nn=True, nn_threshold=0, nn_rate=nn_rate)
+            nn=True, nn_threshold=nn_threshold, nn_rate=nn_rate)
     cls.train(p_set, n_set, u_set, test_set_cls,
               p_batch_size, n_batch_size, u_batch_size,
               p_validation, n_validation, u_validation, cls_training_epochs)
