@@ -227,7 +227,7 @@ class Classifier_from3(Classifier):
 
         p_loader = torch.utils.data.DataLoader(
             p_set, batch_size=p_batch_size,
-            shuffle=True, num_workers=1)
+            shuffle=True, num_workers=0)
 
         sn_loader = torch.utils.data.DataLoader(
             sn_set, batch_size=sn_batch_size,
@@ -339,12 +339,15 @@ class PNUClassifier(Classifier_from3):
 
 class WeightedClassifier(Classifier_from3):
 
-    def __init__(self, model, pp_model, sep_value=0.3, *args, **kwargs):
+    def __init__(self, model, pp_model, sep_value=0.3,
+                 adjust_p=True, adjust_sn=True, *args, **kwargs):
         self.pp_model = pp_model
         for param in self.pp_model.parameters():
             param.requires_grad = False
         self.times = 0
         self.sep_value = sep_value
+        self.adjust_p = adjust_p
+        self.adjust_sn = adjust_sn
         super().__init__(model, *args, **kwargs)
 
     def compute_loss(self, px, snx, ux, convex, validation=False):
@@ -355,9 +358,9 @@ class WeightedClassifier(Classifier_from3):
         fux = self.model(ux.type(settings.dtype))
         # Divide into two parts according to the value of p(s=1|x)
         fpx_prob = self.pp_model(px.type(settings.dtype))
-        fpx_prob[fpx_prob <= 1] = 1
+        fpx_prob[fpx_prob <= self.sep_value] = 1
         fsnx_prob = self.pp_model(snx.type(settings.dtype))
-        fsnx_prob[fsnx_prob <= 1] = 1
+        fsnx_prob[fsnx_prob <= self.sep_value] = 1
         fux_prob = self.pp_model(ux.type(settings.dtype))
         fux_prob = fux_prob/torch.mean(fux_prob)*(self.pi+self.rho)
         fux_prob[fux_prob > self.sep_value] = 1
@@ -387,12 +390,19 @@ class WeightedClassifier(Classifier_from3):
         #     thr = np.percentile(n_losses.detach().cpu().numpy(), 80)
         # else:
         #     thr = np.percentile(n_losses.detach().cpu().numpy(), 100)
-        loss = (
-            self.pi * torch.mean(
+        if self.adjust_p:
+            p_loss = self.pi * torch.mean(
                 self.basic_loss(fpx, convex)
                 + self.basic_loss(-fpx, convex) * (1-fpx_prob)/fpx_prob)
-            + self.rho * torch.mean(
+        else:
+            p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
+        if self.adjust_sn:
+            sn_loss = self.rho * torch.mean(
                 self.basic_loss(-fsnx, convex) * (1+(1-fsnx_prob)/fsnx_prob))
+        else:
+            sn_loss = self.rho * torch.mean(self.basic_loss(-fsnx, convex))
+        loss = (
+            p_loss + sn_loss
             + torch.mean(self.basic_loss(-fux, convex) * (1-fux_prob)))
         return loss.cpu(), loss.cpu()
 

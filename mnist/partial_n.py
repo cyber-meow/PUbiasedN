@@ -1,6 +1,7 @@
 import argparse
 import numpy as np
 import pickle
+# import matplotlib.pyplot as plt
 from collections import OrderedDict
 
 import torch
@@ -15,27 +16,35 @@ import settings
 
 
 p_num = 1000
-sn_num = 5000
-u_num = 30000
+n_num = 1000
+sn_num = 1000
+u_num = 10000
 
 pv_num = 100
-snv_num = 500
-uv_num = 3000
+nv_num = 100
+snv_num = 100
+uv_num = 1000
 
 u_cut = 40000
 
 pi = 0.49
 rho = 0.15
-sn_prob = 1/2
-non_pu_fraction = 0.8
-sep_value = 0.3
 
-dre_training_epochs = 50
+neg_ps = [0.6, 0.15, 0.03, 0.2, 0.02]
+
+non_pu_fraction = 0.8
+
+sep_value = 0.3
+adjust_p = False
+adjust_sn = True
+
+dre_training_epochs = 60
 cls_training_epochs = 100
 
 p_batch_size = 100
-sn_batch_size = 500
-u_batch_size = 3000
+n_batch_size = 100
+sn_batch_size = 100
+u_batch_size = 1000
 
 learning_rate_dre = 1e-4
 learning_rate_cls = 1e-3
@@ -45,37 +54,45 @@ validation_momentum = 0.5
 nn_threshold = 0
 nn_rate = 1/3
 
-partial_n = True
+partial_n = False
 pu_partial_n = False
 partial_n_kai = False
 pu_partial_n_kai = False
 
 pu = False
-pn = False
+pn = True
 pnu = False
 
+# sets_save_name = None
+sets_load_name = 'pickle/1000_1000_10000/sets_n_rho015_imbN_2.p'
 sets_save_name = None
-sets_load_name = 'pickle/sets_n_rho015.p'
 
+# dre_save_name = None
+dre_load_name = 'pickle/1000_1000_10000/dre_model_n_rho015_imbN_2.p'
 dre_save_name = None
-dre_load_name = 'pickle/dre_model_n_rho015.p'
 
 
 params = OrderedDict([
     ('p_num', p_num),
+    ('n_num', n_num),
     ('sn_num', sn_num),
     ('u_num', u_num),
     ('\npv_num', pv_num),
     ('snv_num', snv_num),
+    ('nv_num', nv_num),
     ('uv_num', uv_num),
     ('\npi', pi),
     ('rho', rho),
+    ('neg_ps', neg_ps),
     ('non_pu_fraction', non_pu_fraction),
-    ('sep_value', sep_value),
+    ('\nsep_value', sep_value),
+    ('adjust_p', adjust_p),
+    ('adjust_sn', adjust_sn),
     ('\ndre_training_epochs', dre_training_epochs),
     ('cls_training_epochs', cls_training_epochs),
     ('\np_batch_size', p_batch_size),
-    ('sn_batch_size', p_batch_size),
+    ('sn_batch_size', sn_batch_size),
+    ('n_batch_size', n_batch_size),
     ('u_batch_size', u_batch_size),
     ('\nlearning_rate_dre', learning_rate_dre),
     ('learning_rate_cls', learning_rate_cls),
@@ -124,6 +141,8 @@ mnist = torchvision.datasets.MNIST(
 mnist_test = torchvision.datasets.MNIST(
     './data/MNIST', train=False, download=True, transform=transform)
 
+probs = pickle.load(open('prob_ac_pos.p', 'rb'))
+
 
 def pick_p_data(data, labels, n):
     p_idxs = np.argwhere(labels % 2 == 0).reshape(-1)
@@ -131,12 +150,34 @@ def pick_p_data(data, labels, n):
     return data[selected_p]
 
 
+# def pick_sn_data(data, labels, n):
+#     sn_idxs = np.argwhere(
+#         np.logical_and(labels % 2 == 1, labels < 6)).reshape(-1)
+#     # sn_idxs = np.argwhere(labels % 2 == 1).reshape(-1)
+#     selected_sn = np.random.choice(sn_idxs, n, replace=False)
+#     # print(labels[selected_sn])
+#     return data[selected_sn]
+
+
 def pick_sn_data(data, labels, n):
+    neg_nums = np.random.multinomial(n, neg_ps)
+    print('numbers in each negative subclass', neg_nums)
+    selected_sn = []
+    for i in range(5):
+        idxs = np.argwhere(labels == 2*i+1).reshape(-1)
+        selected = np.random.choice(idxs, neg_nums[i], replace=False)
+        selected_sn.extend(selected)
+    return data[np.array(selected_sn)]
+
+
+def pick_n_data(data, labels, n2):
     # sn_idxs = np.argwhere(
     #     np.logical_and(labels % 2 == 1, labels < 6)).reshape(-1)
-    sn_idxs = np.argwhere(labels % 2 == 1).reshape(-1)
-    selected_sn = np.random.choice(sn_idxs, n, replace=False)
-    return data[selected_sn]
+    n_idxs = np.argwhere(labels % 2 == 1).reshape(-1)
+    # selected_sn = np.random.choice(sn_idxs, n1, replace=False)
+    selected_n = np.random.choice(n_idxs, n2, replace=False)
+    # selected_n = np.r_[selected_n, selected_sn]
+    return data[np.random.permutation(selected_n)]
 
 
 def pick_u_data(data, n):
@@ -153,6 +194,25 @@ valid_labels = train_labels[idxs][u_cut:]
 train_data = train_data[idxs][:u_cut]
 train_labels = train_labels[idxs][:u_cut]
 
+# n_train_data = train_data[train_labels % 2 == 1]
+# n_labels = train_labels[train_labels % 2 == 1]
+# num_n_train = len(n_train_data)
+# n_valid_data = valid_data[valid_labels % 2 == 1]
+
+# probs_train = (np.maximum(probs[:num_n_train]-28000, 0))**5
+# probs_train = probs_train/np.sum(probs_train)
+# probs_valid = (np.maximum(probs[num_n_train:]-28000, 0))**5
+# probs_valid = probs_valid/np.sum(probs_valid)
+
+# sn_train_idxs = np.random.choice(
+#     num_n_train, sn_num, replace=False, p=probs_train)
+# sn_valid_idxs = np.random.choice(
+#     len(n_valid_data), snv_num, replace=False, p=probs_valid)
+
+# if True:
+#     plt.hist(probs[sn_train_idxs])
+#     plt.show()
+
 
 if sets_load_name is None:
     p_set = torch.utils.data.TensorDataset(
@@ -160,6 +220,12 @@ if sets_load_name is None:
 
     sn_set = torch.utils.data.TensorDataset(
         pick_sn_data(train_data, train_labels, sn_num).unsqueeze(1))
+
+    # sn_set = torch.utils.data.TensorDataset(
+    #     n_train_data[sn_train_idxs].unsqueeze(1))
+
+    n_set = torch.utils.data.TensorDataset(
+        pick_n_data(train_data, train_labels, n_num).unsqueeze(1))
 
     selected_u = np.random.choice(len(train_data), u_num, replace=False)
     u_set = torch.utils.data.TensorDataset(
@@ -175,11 +241,13 @@ if sets_load_name is None:
         pickle.dump((p_set, sn_set, u_set), open(sets_save_name, 'wb'))
 
 if sets_load_name is not None:
-    p_set, sn_set, u_set = pickle.load(open('sets_n.p', 'rb'))
+    p_set, sn_set, u_set = pickle.load(open(sets_load_name, 'rb'))
 
 
 p_validation = pick_p_data(valid_data, valid_labels, pv_num).unsqueeze(1)
 sn_validation = pick_sn_data(valid_data, valid_labels, snv_num).unsqueeze(1)
+# sn_validation = n_valid_data[sn_valid_idxs].unsqueeze(1)
+n_validation = pick_n_data(valid_data, valid_labels, nv_num).unsqueeze(1)
 u_validation = pick_u_data(valid_data, uv_num).unsqueeze(1)
 
 
@@ -189,11 +257,11 @@ test_labels = mnist_test.test_labels
 test_posteriors = torch.zeros(test_labels.size())
 test_posteriors[test_labels % 2 == 0] = 1
 # test_posteriors[test_labels % 2 == 1] = -1
-test_posteriors[test_labels == 1] = sn_prob
-test_posteriors[test_labels == 3] = sn_prob
-test_posteriors[test_labels == 5] = sn_prob
-test_posteriors[test_labels == 7] = 0
-test_posteriors[test_labels == 9] = 0
+test_posteriors[test_labels == 1] = neg_ps[0] * rho * 10
+test_posteriors[test_labels == 3] = neg_ps[1] * rho * 10
+test_posteriors[test_labels == 5] = neg_ps[2] * rho * 10
+test_posteriors[test_labels == 7] = neg_ps[3] * rho * 10
+test_posteriors[test_labels == 9] = neg_ps[4] * rho * 10
 
 test_set_dre = torch.utils.data.TensorDataset(
     test_data.unsqueeze(1), test_posteriors.unsqueeze(1))
@@ -254,12 +322,15 @@ if partial_n or pu_partial_n:
 
     if dre_load_name is not None:
         dre_model = pickle.load(open(dre_load_name, 'rb'))
+    else:
+        dre_model = dre.model
 
     if partial_n:
         print('')
         model = Net().cuda() if args.cuda else Net()
         cls = training.WeightedClassifier(
-                model, dre_model, pi=pi, rho=rho, sep_value=sep_value,
+                model, dre_model, pi=pi, rho=rho,
+                sep_value=sep_value, adjust_p=adjust_p, adjust_sn=adjust_sn,
                 lr=learning_rate_cls, weight_decay=weight_decay)
         cls.train(p_set, sn_set, u_set, test_set_cls,
                   p_batch_size, sn_batch_size, u_batch_size,
@@ -341,6 +412,6 @@ if pnu:
             lr=learning_rate_cls, weight_decay=weight_decay,
             pn_fraction=non_pu_fraction,
             nn=True, nn_threshold=0, nn_rate=nn_rate)
-    cls.train(p_set, sn_set, u_set, test_set_cls,
-              p_batch_size, sn_batch_size, u_batch_size,
-              p_validation, sn_validation, u_validation, cls_training_epochs)
+    cls.train(p_set, n_set, u_set, test_set_cls,
+              p_batch_size, n_batch_size, u_batch_size,
+              p_validation, n_validation, u_validation, cls_training_epochs)

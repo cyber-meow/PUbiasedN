@@ -20,9 +20,12 @@ def read_directory(dir_name):
                 if f.startswith('mnist_{}'.format(name)):
                     if name not in to_plot:
                         to_plot[name] = [], [], []
-                    to_plot[name][0].append(pers)
-                    to_plot[name][1].append(va_pers)
-                    to_plot[name][2].append(losses)
+                    if pers != []:
+                        to_plot[name][0].append(pers)
+                    if va_pers != []:
+                        to_plot[name][1].append(va_pers)
+                    if losses != []:
+                        to_plot[name][2].append(losses)
 
     plt.figure()
     plt.title('test accuracy')
