@@ -33,7 +33,7 @@ class Training(object):
     def validation(self, *args):
         self.model.eval()
         _, validation_loss = self.compute_loss(*args, validation=True)
-        print('Validation Loss:', validation_loss.item())
+        # print('Validation Loss:', validation_loss.item())
         if self.curr_accu_vloss is None:
             self.curr_accu_vloss = validation_loss.item()
         else:
@@ -44,6 +44,15 @@ class Training(object):
             self.min_vloss = self.curr_accu_vloss
             self.final_model = deepcopy(self.model)
         return validation_loss
+
+    @staticmethod
+    def feed_model(model, *args):
+        split_sizes = []
+        for x in args:
+            split_sizes.append(x.size(0))
+        x_cat = torch.cat(args).type(settings.dtype)
+        fx = model(x_cat)
+        return torch.split(fx, split_sizes)
 
     def train(self, *args):
         raise NotImplementedError
@@ -146,8 +155,7 @@ class PNClassifier(Classifier_from2):
         super().__init__(model, *args, **kwargs)
 
     def compute_loss(self, px, nx, convex, validation=False):
-        fpx = self.model(px.type(settings.dtype))
-        fnx = self.model(nx.type(settings.dtype))
+        fpx, fnx = self.feed_model(self.model, px, nx)
         p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
         n_loss = (1-self.pi) * torch.mean(self.basic_loss(-fnx, convex))
         loss = p_loss + n_loss
@@ -184,8 +192,7 @@ class PUClassifier(Classifier_from2):
         super().__init__(model, *args, **kwargs)
 
     def compute_loss(self, px, ux, convex, validation=False):
-        fpx = self.model(px.type(settings.dtype))
-        fux = self.model(ux.type(settings.dtype))
+        fpx, fux = self.feed_model(self.model, px, ux)
         p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
         n_loss = (torch.mean(self.basic_loss(-fux, convex))
                   - self.pi * torch.mean(self.basic_loss(-fpx, convex)))
@@ -286,9 +293,7 @@ class PUClassifier3(Classifier_from3):
         super().__init__(model, *args, **kwargs)
 
     def compute_loss(self, px, snx, ux, convex, validation=False):
-        fpx = self.model(px.type(settings.dtype))
-        fsnx = self.model(snx.type(settings.dtype))
-        fux = self.model(ux.type(settings.dtype))
+        fpx, fsnx, fux = self.feed_model(self.model, px, snx, ux)
         p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
         sn_loss = self.rho * torch.mean(self.basic_loss(fsnx, convex))
         n_loss = (torch.mean(self.basic_loss(-fux, convex))
@@ -342,15 +347,12 @@ class PUClassifierPlusN(Classifier_from3):
         return np.mean(np.array(losses))
 
     def compute_loss(self, px, snx, snx2, ux, convex, validation=False):
-        fpx = self.model(px.type(settings.dtype))
-        fsnx = self.model(snx.type(settings.dtype))
-        fux = self.model(ux.type(settings.dtype))
+        fpx, fsnx, fsnx2, fux = self.feed_model(self.model, px, snx, snx2, ux)
         p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
         sn_loss = self.rho * torch.mean(self.basic_loss(-fsnx, convex))
         n_loss = (torch.mean(self.basic_loss(-fux, convex))
                   - self.pi * torch.mean(self.basic_loss(-fpx, convex)))
         if self.minus_n:
-            fsnx2 = self.model(snx2.type(settings.dtype))
             n_loss -= self.rho * torch.mean(self.basic_loss(-fsnx2, convex))
         if not validation:
             print(n_loss.item())
@@ -373,9 +375,7 @@ class PNUClassifier(Classifier_from3):
         super().__init__(model, *args, **kwargs)
 
     def compute_loss(self, px, nx, ux, convex, validation=False):
-        fpx = self.model(px.type(settings.dtype))
-        fnx = self.model(nx.type(settings.dtype))
-        fux = self.model(ux.type(settings.dtype))
+        fpx, fnx, fux = self.feed_model(self.model, px, nx, ux)
         p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
         n_loss = (1-self.pi) * torch.mean(self.basic_loss(-fnx, convex))
         n_loss2 = (torch.mean(self.basic_loss(-fux, convex))
@@ -403,12 +403,11 @@ class WeightedClassifier(Classifier_from3):
         super().__init__(model, *args, **kwargs)
 
     def compute_loss(self, px, snx, ux, convex, validation=False):
-        fpx = self.model(px.type(settings.dtype))
-        fsnx = self.model(snx.type(settings.dtype))
         if False and not validation:
             ux, ulabels = ux
-        fux = self.model(ux.type(settings.dtype))
+        fpx, fsnx, fux = self.feed_model(self.model, px, snx, ux)
         # Divide into two parts according to the value of p(s=1|x)
+        self.pp_model.eval()
         fpx_prob = self.pp_model(px.type(settings.dtype))
         fpx_prob[fpx_prob <= self.sep_value] = 1
         fsnx_prob = self.pp_model(snx.type(settings.dtype))
@@ -471,9 +470,8 @@ class WeightedClassifier2(Classifier_from3):
         super().__init__(model, *args, **kwargs)
 
     def compute_loss(self, px, snx, ux, convex, validation=False):
-        fpx = self.model(px.type(settings.dtype))
-        fsnx = self.model(snx.type(settings.dtype))
-        fux = self.model(ux.type(settings.dtype))
+        fpx, fsnx, fux = self.feed_model(self.model, px, snx, ux)
+        self.pp_model.eval()
         fux_prob = self.pp_model(ux.type(settings.dtype))
         # pred_prob = (1-fux_prob)/(1-torch.mean(fux_prob))*(1-self.rho)
         fux_prob = torch.clamp(fux_prob/torch.mean(fux_prob)*self.rho, 0, 1)
@@ -505,9 +503,8 @@ class PUWeightedClassifier(Classifier_from3):
         super().__init__(model, *args, **kwargs)
 
     def compute_loss(self, px, snx, ux, convex, validation=False):
-        fpx = self.model(px.type(settings.dtype))
-        fsnx = self.model(snx.type(settings.dtype))
-        fux = self.model(ux.type(settings.dtype))
+        fpx, fsnx, fux = self.feed_model(self.model, px, snx, ux)
+        self.pp_model.eval()
         fux_prob = self.pp_model(ux.type(settings.dtype))
         fux_prob = fux_prob/torch.mean(fux_prob)*(self.pi+self.rho)
         p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
@@ -538,9 +535,8 @@ class PUWeightedClassifier2(Classifier_from3):
         super().__init__(model, *args, **kwargs)
 
     def compute_loss(self, px, snx, ux, convex, validation=False):
-        fpx = self.model(px.type(settings.dtype))
-        fsnx = self.model(snx.type(settings.dtype))
-        fux = self.model(ux.type(settings.dtype))
+        fpx, fsnx, fux = self.feed_model(self.model, px, snx, ux)
+        self.pp_model.eval()
         fux_prob = self.pp_model(ux.type(settings.dtype))
         # pred_prob = (1-fux_prob)/(1-torch.mean(fux_prob))*(1-self.rho)
         fux_prob = torch.clamp(fux_prob/torch.mean(fux_prob)*self.rho, 0, 1)
@@ -623,9 +619,7 @@ class PosteriorProbability(Training):
         return np.mean(np.array(losses))
 
     def compute_loss(self, px, snx, ux, validation=False):
-        fpx = self.model(px.type(settings.dtype))
-        fsnx = self.model(snx.type(settings.dtype))
-        fux = self.model(ux.type(settings.dtype))
+        fpx, fsnx, fux = self.feed_model(self.model, px, snx, ux)
         fpx_mean = torch.mean(fpx)
         fsnx_mean = torch.mean(fsnx)
         fux_mean = torch.mean(fux)
@@ -701,8 +695,7 @@ class PosteriorProbability2(Training):
         return np.mean(np.array(losses))
 
     def compute_loss(self, px, ux, validation=False):
-        fpx = self.model(px.type(settings.dtype))
-        fux = self.model(ux.type(settings.dtype))
+        fpx, fux = self.feed_model(self.model, px, ux)
         fpx_mean = torch.mean(fpx)
         fux_mean = torch.mean(fux)
         fux2_mean = torch.mean(fux**2)

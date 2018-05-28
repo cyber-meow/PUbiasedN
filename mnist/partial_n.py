@@ -15,6 +15,8 @@ import training
 import settings
 
 
+normalize = False
+
 p_num = 1000
 n_num = 1000
 sn_num = 1000
@@ -62,23 +64,24 @@ pu_partial_n_kai = False
 
 pu_plus_n = False
 minus_n = False
-pu_then_pn = True
+pu_then_pn = False
 
-pu = False
+pu = True
 pn = False
 pnu = False
 
-# sets_save_name = None
-sets_load_name = 'pickle/1000_1000_10000/sets_n_rho015_imbN.p'
+sets_load_name = None
+# sets_load_name = 'pickle/1000_1000_10000/sets_n_rho015_imbN.p'
 sets_save_name = None
 
-# dre_save_name = None
-dre_load_name = 'pickle/1000_1000_10000/dre_model_n_rho02_imbN.p'
+dre_load_name = None
+# dre_load_name = 'pickle/1000_1000_10000/dre_model_n_rho02_imbN.p'
 dre_save_name = None
 
 
 params = OrderedDict([
-    ('p_num', p_num),
+    ('normalize', normalize)
+    ('\np_num', p_num),
     ('n_num', n_num),
     ('sn_num', sn_num),
     ('u_num', u_num),
@@ -140,7 +143,7 @@ settings.dtype = torch.cuda.FloatTensor if args.cuda else torch.FloatTensor
 # torchvision.datasets.MNIST outputs a set of PIL images
 # We transform them to tensors
 transform = transforms.Compose(
-    [transforms.ToTensor(), transforms.Normalize((0.5,), (1.0,))])
+    [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
 
 # Load and transform data
 mnist = torchvision.datasets.MNIST(
@@ -193,14 +196,26 @@ def pick_u_data(data, n):
     return data[selected_u]
 
 
-train_data = mnist.train_data
-train_labels = mnist.train_labels
+if normalize:
+    train_data = torch.zeros(mnist.train_data.size())
+    for i, (image, _) in enumerate(mnist):
+        train_data[i] = image
+else:
+    train_data = mnist.train_data
+train_labels = torch.tensor(mnist.train_labels)
+
 idxs = np.random.permutation(len(train_data))
+
+# probs2 = -np.ones(len(train_data))
+# probs2[train_labels % 2 == 1] = probs
+# probs2 = probs2[idxs]
+# probs = probs2[probs > 0]
 
 valid_data = train_data[idxs][u_cut:]
 valid_labels = train_labels[idxs][u_cut:]
 train_data = train_data[idxs][:u_cut]
 train_labels = train_labels[idxs][:u_cut]
+
 
 # n_train_data = train_data[train_labels % 2 == 1]
 # n_labels = train_labels[train_labels % 2 == 1]
@@ -235,12 +250,12 @@ if sets_load_name is None:
     n_set = torch.utils.data.TensorDataset(
         pick_n_data(train_data, train_labels, n_num).unsqueeze(1))
 
-    selected_u = np.random.choice(len(train_data), u_num, replace=False)
-    u_set = torch.utils.data.TensorDataset(
-        train_data[selected_u].unsqueeze(1))
-    u_set_labels = torch.utils.data.TensorDataset(
-        train_data[selected_u].unsqueeze(1),
-        train_labels[selected_u].unsqueeze(1))
+    # selected_u = np.random.choice(len(train_data), u_num, replace=False)
+    # u_set = torch.utils.data.TensorDataset(
+    #     train_data[selected_u].unsqueeze(1))
+    # u_set_labels = torch.utils.data.TensorDataset(
+    #     train_data[selected_u].unsqueeze(1),
+    #     train_labels[selected_u].unsqueeze(1))
 
     u_set = torch.utils.data.TensorDataset(
         pick_u_data(train_data, u_num).unsqueeze(1))
@@ -259,8 +274,14 @@ n_validation = pick_n_data(valid_data, valid_labels, nv_num).unsqueeze(1)
 u_validation = pick_u_data(valid_data, uv_num).unsqueeze(1)
 
 
-test_data = mnist_test.test_data
-test_labels = mnist_test.test_labels
+if normalize:
+    test_data = torch.zeros(mnist_test.test_data.size())
+    for i, (image, _) in enumerate(mnist_test):
+        test_data[i] = image
+else:
+    test_data = mnist_test.test_data
+test_labels = torch.tensor(mnist_test.test_labels)
+
 
 test_posteriors = torch.zeros(test_labels.size())
 test_posteriors[test_labels % 2 == 0] = 1
@@ -296,13 +317,17 @@ class Net(nn.Module):
         super(Net, self).__init__()
         self.sigmoid_output = sigmoid_output
         self.conv1 = nn.Conv2d(1, 5, 5, 1)
+        self.bn1 = nn.BatchNorm2d(5)
         self.conv2 = nn.Conv2d(5, 10, 5, 1)
+        self.bn2 = nn.BatchNorm2d(10)
         self.fc1 = nn.Linear(4*4*10, 40)
         self.fc2 = nn.Linear(40, 1)
 
     def forward(self, x):
+        # x = F.relu(self.bn1(self.conv1(x)))
         x = F.relu(self.conv1(x))
         x = F.max_pool2d(x, 2, 2)
+        # x = F.relu(self.bn2(self.conv2(x)))
         x = F.relu(self.conv2(x))
         x = F.max_pool2d(x, 2, 2)
         x = x.view(-1, 4*4*10)
