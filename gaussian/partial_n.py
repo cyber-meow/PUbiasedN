@@ -42,9 +42,9 @@ nn_threshold = 0
 nn_rate = 1/10000
 sigmoid_output = True
 
-partial_n = True
-pu = True
-pu_then_pn = True
+partial_n = False
+pu = False
+pu_then_pn = False
 
 
 params = OrderedDict([
@@ -163,6 +163,7 @@ tg.positive_samples = tg.positive_samples[:2000]
 n_plot_idxs = np.random.choice(int(t_num/2), 2000, replace=False)
 tg.negative_samples = np.array(tg.negative_samples)[n_plot_idxs]
 tg.plot_samples()
+plt.legend()
 plt.pause(0.05)
 
 

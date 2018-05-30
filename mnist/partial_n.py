@@ -1,7 +1,7 @@
 import argparse
 import numpy as np
 import pickle
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 from collections import OrderedDict
 
 import torch
@@ -30,9 +30,10 @@ uv_num = 1000
 u_cut = 40000
 
 pi = 0.49
-rho = 0.15
+rho = 0.2
 
-neg_ps = [0.6, 0.15, 0.03, 0.2, 0.02]
+# neg_ps = [0.6, 0.15, 0.03, 0.2, 0.02]
+neg_ps = [0.2, 0.2, 0.2, 0.2, 0.2]
 # neg_ps = [1/3, 1/3, 1/3, 0, 0]
 
 non_pu_fraction = 0.8
@@ -66,21 +67,21 @@ pu_plus_n = False
 minus_n = False
 pu_then_pn = False
 
-pu = True
-pn = False
+pu = False
+pn = True
 pnu = False
 
+# sets_load_name = None
+sets_save_name = 'pickle/1000_1000_10000/sets_rho015_farN.p'
 sets_load_name = None
-# sets_load_name = 'pickle/1000_1000_10000/sets_n_rho015_imbN.p'
-sets_save_name = None
 
+# dre_load_name = None
+dre_save_name = 'pickle/1000_1000_10000/dre_model_rho02_farN.p'
 dre_load_name = None
-# dre_load_name = 'pickle/1000_1000_10000/dre_model_n_rho02_imbN.p'
-dre_save_name = None
 
 
 params = OrderedDict([
-    ('normalize', normalize)
+    ('normalize', normalize),
     ('\np_num', p_num),
     ('n_num', n_num),
     ('sn_num', sn_num),
@@ -126,7 +127,7 @@ params = OrderedDict([
 
 for key, value in params.items():
     print('{}: {}'.format(key, value))
-print('')
+print('', flush=True)
 
 
 parser = argparse.ArgumentParser(description='MNIST partial n')
@@ -152,22 +153,11 @@ mnist = torchvision.datasets.MNIST(
 mnist_test = torchvision.datasets.MNIST(
     './data/MNIST', train=False, download=True, transform=transform)
 
-probs = pickle.load(open('prob_ac_pos.p', 'rb'))
-
 
 def pick_p_data(data, labels, n):
     p_idxs = np.argwhere(labels % 2 == 0).reshape(-1)
     selected_p = np.random.choice(p_idxs, n, replace=False)
     return data[selected_p]
-
-
-# def pick_sn_data(data, labels, n):
-#     sn_idxs = np.argwhere(
-#         np.logical_and(labels % 2 == 1, labels < 6)).reshape(-1)
-#     # sn_idxs = np.argwhere(labels % 2 == 1).reshape(-1)
-#     selected_sn = np.random.choice(sn_idxs, n, replace=False)
-#     # print(labels[selected_sn])
-#     return data[selected_sn]
 
 
 def pick_sn_data(data, labels, n):
@@ -202,14 +192,15 @@ if normalize:
         train_data[i] = image
 else:
     train_data = mnist.train_data
-train_labels = torch.tensor(mnist.train_labels)
+train_labels = mnist.train_labels
 
 idxs = np.random.permutation(len(train_data))
 
-# probs2 = -np.ones(len(train_data))
-# probs2[train_labels % 2 == 1] = probs
-# probs2 = probs2[idxs]
-# probs = probs2[probs > 0]
+probs = pickle.load(open('prob_ac_pos.p', 'rb'))
+probs2 = -np.ones(len(train_data))
+probs2[np.array(train_labels) % 2 == 1] = probs
+probs2 = probs2[idxs]
+probs = probs2[probs2 >= 0]
 
 valid_data = train_data[idxs][u_cut:]
 valid_labels = train_labels[idxs][u_cut:]
@@ -217,35 +208,38 @@ train_data = train_data[idxs][:u_cut]
 train_labels = train_labels[idxs][:u_cut]
 
 
-# n_train_data = train_data[train_labels % 2 == 1]
-# n_labels = train_labels[train_labels % 2 == 1]
-# num_n_train = len(n_train_data)
-# n_valid_data = valid_data[valid_labels % 2 == 1]
+n_train_data = train_data[train_labels % 2 == 1]
+n_labels = train_labels[train_labels % 2 == 1]
+num_n_train = len(n_train_data)
+n_valid_data = valid_data[valid_labels % 2 == 1]
 
-# probs_train = (np.maximum(probs[:num_n_train]-28000, 0))**5
-# probs_train = probs_train/np.sum(probs_train)
-# probs_valid = (np.maximum(probs[num_n_train:]-28000, 0))**5
-# probs_valid = probs_valid/np.sum(probs_valid)
+# probs_train = (np.maximum(probs[:num_n_train]-27000, 0))**5
+probs_train = (len(probs)-probs[:num_n_train])**10
+# probs_train = probs[:num_n_train]**10
+probs_train = probs_train/np.sum(probs_train)
+# probs_valid = (np.maximum(probs[num_n_train:]-27000, 0))**5
+probs_valid = (len(probs)-probs[num_n_train:])**10
+# probs_valid = probs[num_n_train:]**10
+probs_valid = probs_valid/np.sum(probs_valid)
 
-# sn_train_idxs = np.random.choice(
-#     num_n_train, sn_num, replace=False, p=probs_train)
-# sn_valid_idxs = np.random.choice(
-#     len(n_valid_data), snv_num, replace=False, p=probs_valid)
+sn_train_idxs = np.random.choice(
+    num_n_train, sn_num, replace=False, p=probs_train)
+sn_valid_idxs = np.random.choice(
+    len(n_valid_data), snv_num, replace=False, p=probs_valid)
 
-# if True:
-#     plt.hist(probs[sn_train_idxs])
-#     plt.show()
+plt.hist(probs[sn_train_idxs])
+plt.show()
 
 
 if sets_load_name is None:
     p_set = torch.utils.data.TensorDataset(
         pick_p_data(train_data, train_labels, p_num).unsqueeze(1))
 
-    sn_set = torch.utils.data.TensorDataset(
-        pick_sn_data(train_data, train_labels, sn_num).unsqueeze(1))
-
     # sn_set = torch.utils.data.TensorDataset(
-    #     n_train_data[sn_train_idxs].unsqueeze(1))
+    #     pick_sn_data(train_data, train_labels, sn_num).unsqueeze(1))
+
+    sn_set = torch.utils.data.TensorDataset(
+        n_train_data[sn_train_idxs].unsqueeze(1))
 
     n_set = torch.utils.data.TensorDataset(
         pick_n_data(train_data, train_labels, n_num).unsqueeze(1))
@@ -268,8 +262,8 @@ if sets_load_name is not None:
 
 
 p_validation = pick_p_data(valid_data, valid_labels, pv_num).unsqueeze(1)
-sn_validation = pick_sn_data(valid_data, valid_labels, snv_num).unsqueeze(1)
-# sn_validation = n_valid_data[sn_valid_idxs].unsqueeze(1)
+# sn_validation = pick_sn_data(valid_data, valid_labels, snv_num).unsqueeze(1)
+sn_validation = n_valid_data[sn_valid_idxs].unsqueeze(1)
 n_validation = pick_n_data(valid_data, valid_labels, nv_num).unsqueeze(1)
 u_validation = pick_u_data(valid_data, uv_num).unsqueeze(1)
 
@@ -280,7 +274,7 @@ if normalize:
         test_data[i] = image
 else:
     test_data = mnist_test.test_data
-test_labels = torch.tensor(mnist_test.test_labels)
+test_labels = mnist_test.test_labels
 
 
 test_posteriors = torch.zeros(test_labels.size())

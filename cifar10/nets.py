@@ -71,8 +71,9 @@ class PreActBottleneck(nn.Module):
 
 
 class PreActResNet(nn.Module):
-    def __init__(self, block, num_blocks, num_classes=2):
+    def __init__(self, block, num_blocks, num_classes=1, sigmoid_output=False):
         super(PreActResNet, self).__init__()
+        self.sigmoid_output = sigmoid_output
         self.in_planes = 64
 
         self.conv1 = nn.Conv2d(
@@ -100,11 +101,14 @@ class PreActResNet(nn.Module):
         out = F.avg_pool2d(out, 4)
         out = out.view(out.size(0), -1)
         out = self.linear(out)
+        if self.sigmoid_output:
+            out = F.sigmoid(out)
         return out
 
 
-def PreActResNet18():
-    return PreActResNet(PreActBlock, [2, 2, 2, 2])
+def PreActResNet18(sigmoid_output=False):
+    return PreActResNet(PreActBlock, [2, 2, 2, 2],
+                        sigmoid_output=sigmoid_output)
 
 
 def PreActResNet34():
