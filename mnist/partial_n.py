@@ -58,7 +58,7 @@ validation_momentum = 0.5
 nn_threshold = 0
 nn_rate = 1/3
 
-partial_n = False
+partial_n = True
 pu_partial_n = False
 partial_n_kai = False
 pu_partial_n_kai = False
@@ -68,7 +68,7 @@ minus_n = False
 pu_then_pn = False
 
 pu = False
-pn = True
+pn = False
 pnu = False
 
 # sets_load_name = None
