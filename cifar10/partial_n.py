@@ -37,7 +37,7 @@ adjust_p = False
 adjust_sn = True
 
 dre_training_epochs = 20
-cls_training_epochs = 100
+cls_training_epochs = 200
 
 p_batch_size = 100
 n_batch_size = 100
@@ -314,7 +314,7 @@ if pu_then_pn:
     cls.train(p_set, sn_set, u_set, test_set_pre_cls,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
-              dre_training_epochs)
+              cls_training_epochs)
 
     print('')
     model = PreActResNet18().cuda() if args.cuda else PreActResNet18()

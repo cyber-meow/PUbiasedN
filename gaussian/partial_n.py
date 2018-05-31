@@ -94,6 +94,7 @@ settings.dtype = torch.cuda.FloatTensor if args.cuda else torch.FloatTensor
 tg = ThreeGaussian()
 
 plt.ion()
+plt.axis('off')
 
 rho = tg.estimate_neg_observed_prob(es_num)
 print('rho', rho)

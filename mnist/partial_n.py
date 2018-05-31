@@ -446,7 +446,7 @@ if pu_then_pn:
     cls.train(p_set, sn_set, u_set, test_set_pre_cls,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
-              dre_training_epochs)
+              cls_training_epochs)
 
     print('')
     model = Net().cuda() if args.cuda else Net()
