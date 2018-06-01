@@ -175,10 +175,14 @@ class Classifier_from2(Classifier):
 
 class PNClassifier(Classifier_from2):
 
-    def __init__(self, model, pu_model=None, *args, **kwargs):
+    def __init__(self, model, pu_model=None, pp_model=None,
+                 adjust_p=False, adjust_n=False, *args, **kwargs):
         if pu_model is not None:
             self.pu_model = pu_model
             self.test = self.test_two_stage
+        self.pp_model = pp_model
+        self.adjust_p = adjust_p
+        self.adjust_n = adjust_n
         super().__init__(model, *args, **kwargs)
 
     def compute_loss(self, px, nx, convex, validation=False):
@@ -187,8 +191,18 @@ class PNClassifier(Classifier_from2):
             fnx = self.feed_in_batches(self.model, nx)
         else:
             fpx, fnx = self.feed_together(self.model, px, nx)
-        p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
-        n_loss = (1-self.pi) * torch.mean(self.basic_loss(-fnx, convex))
+        if self.adjust_p:
+            fpx_prob = self.feed_in_batches(self.pp_model, px)
+            p_loss = self.pi * torch.mean(
+                self.basic_loss(fpx, convex) / fpx_prob)
+        else:
+            p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
+        if self.adjust_sn:
+            fnx_prob = self.feed_in_batches(self.pp_model, nx)
+            n_loss = (1-self.pi) * torch.mean(
+                self.basic_loss(-fnx, convex) / fnx_prob)
+        else:
+            n_loss = (1-self.pi) * torch.mean(self.basic_loss(-fnx, convex))
         loss = p_loss + n_loss
         return loss.cpu(), loss.cpu()
 
@@ -457,60 +471,31 @@ class WeightedClassifier(Classifier_from3):
         super().__init__(model, *args, **kwargs)
 
     def compute_loss(self, px, snx, ux, convex, validation=False):
-        if False and not validation:
-            ux, ulabels = ux
         if validation:
             fpx = self.feed_in_batches(self.model, px)
-            fsnx = self.feed_in_batches(self.model, snx)
             fux = self.feed_in_batches(self.model, ux)
-            fpx_prob = self.feed_in_batches(self.pp_model, px)
-            fsnx_prob = self.feed_in_batches(self.pp_model, snx)
-            fux_prob = self.feed_in_batches(self.pp_model, ux)
+            fsnx = self.feed_in_batches(self.model, snx)
         else:
             fpx, fsnx, fux = self.feed_together(self.model, px, snx, ux)
-            self.pp_model.eval()
             fpx_prob, fsnx_prob, fux_prob = self.feed_together(
                 self.pp_model, px, snx, ux)
         # Divide into two parts according to the value of p(s=1|x)
-        fpx_prob[fpx_prob <= self.sep_value] = 1
-        fsnx_prob[fsnx_prob <= self.sep_value] = 1
+        fux_prob = self.feed_in_batches(self.pp_model, ux)
         fux_prob = fux_prob/torch.mean(fux_prob)*(self.pi+self.rho)
         fux_prob[fux_prob > self.sep_value] = 1
-        if False and not validation:
-            fpx_prob_numpy = fpx_prob.detach().cpu().numpy().reshape(-1)
-            print(fpx_prob_numpy[np.argsort(fpx_prob_numpy)][:10])
-            fsnx_prob_numpy = fsnx_prob.detach().cpu().numpy().reshape(-1)
-            print(fsnx_prob_numpy[np.argsort(fsnx_prob_numpy)][:10])
-        if False and not validation:
-            derivatives = torch.exp(-fux)/(1+torch.exp(-fux))**2 * (1-fux_prob)
-            derivatives = derivatives.detach().cpu().numpy().reshape(-1)
-            weights = (1-fux_prob).detach().cpu().numpy().reshape(-1)
-            ulabels = ulabels.numpy().reshape(-1)
-            self.times += 1
-            n_losses_numpy = self.basic_loss(
-                -fux, convex).detach().cpu().numpy().reshape(-1)
-            # arg_weights = np.argsort(weights)
-            arg_losses = np.argsort(n_losses_numpy)
-            arg_derivatives = np.argsort(derivatives)
-            # print(weights[arg_weights][-10:])
-            # print(ulabels[arg_weights][-10:])
-            print(weights[arg_losses][-10:])
-            print(ulabels[arg_losses][-10:])
-            print(weights[arg_derivatives][-10:])
-            print(ulabels[arg_derivatives][-10:])
-        # if self.times > 200:
-        #     thr = np.percentile(n_losses.detach().cpu().numpy(), 80)
-        # else:
-        #     thr = np.percentile(n_losses.detach().cpu().numpy(), 100)
         if self.adjust_p:
+            fpx_prob = self.feed_in_batches(self.pp_model, px)
+            fpx_prob[fpx_prob <= self.sep_value] = 1
             p_loss = self.pi * torch.mean(
                 self.basic_loss(fpx, convex)
                 + self.basic_loss(-fpx, convex) * (1-fpx_prob)/fpx_prob)
         else:
             p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
         if self.adjust_sn:
+            fsnx_prob = self.feed_in_batches(self.pp_model, snx)
+            fsnx_prob[fsnx_prob <= self.sep_value] = 1
             sn_loss = self.rho * torch.mean(
-                self.basic_loss(-fsnx, convex) * (1+(1-fsnx_prob)/fsnx_prob))
+                self.basic_loss(-fsnx, convex) / fsnx_prob)
         else:
             sn_loss = self.rho * torch.mean(self.basic_loss(-fsnx, convex))
         loss = (
