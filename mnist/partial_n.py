@@ -1,7 +1,7 @@
 import argparse
 import numpy as np
 import pickle
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from collections import OrderedDict
 
 import torch
@@ -30,10 +30,10 @@ uv_num = 1000
 u_cut = 40000
 
 pi = 0.49
-rho = 0.2
+rho = 0.15
 
-# neg_ps = [0.6, 0.15, 0.03, 0.2, 0.02]
-neg_ps = [0.2, 0.2, 0.2, 0.2, 0.2]
+neg_ps = [0.6, 0.15, 0.03, 0.2, 0.02]
+# neg_ps = [0.2, 0.2, 0.2, 0.2, 0.2]
 # neg_ps = [1/3, 1/3, 1/3, 0, 0]
 
 non_pu_fraction = 0.8
@@ -42,8 +42,9 @@ sep_value = 0.3
 adjust_p = False
 adjust_sn = True
 
-dre_training_epochs = 60
+dre_training_epochs = 100
 cls_training_epochs = 100
+convex_epochs = 100
 
 p_batch_size = 100
 n_batch_size = 100
@@ -55,29 +56,34 @@ learning_rate_cls = 1e-3
 weight_decay = 1e-4
 validation_momentum = 0.5
 
+non_negative = True
 nn_threshold = 0
 nn_rate = 1/3
 
-partial_n = True
+partial_n = False
 pu_partial_n = False
 partial_n_kai = False
 pu_partial_n_kai = False
+
+ls_prob_est = True
+pu_prob_est = False
 
 pu_plus_n = False
 minus_n = False
 pu_then_pn = False
 
 pu = False
-pn = False
+unbiased_pn = False
+iwpn = False
 pnu = False
 
 # sets_load_name = None
-sets_save_name = 'pickle/1000_1000_10000/sets_rho015_farN.p'
-sets_load_name = None
+sets_load_name = 'pickle/mnist/1000_1000_10000/imbN/sets_imbN.p'
+sets_save_name = None
 
-# dre_load_name = None
-dre_save_name = 'pickle/1000_1000_10000/dre_model_rho02_farN.p'
 dre_load_name = None
+# dre_load_name = 'pickle/1000_1000_10000/dre_model_rho015_farN.p'
+dre_save_name = None
 
 
 params = OrderedDict([
@@ -99,6 +105,7 @@ params = OrderedDict([
     ('adjust_sn', adjust_sn),
     ('\ndre_training_epochs', dre_training_epochs),
     ('cls_training_epochs', cls_training_epochs),
+    ('convex_epochs', convex_epochs),
     ('\np_batch_size', p_batch_size),
     ('sn_batch_size', sn_batch_size),
     ('n_batch_size', n_batch_size),
@@ -107,17 +114,21 @@ params = OrderedDict([
     ('learning_rate_cls', learning_rate_cls),
     ('weight_decay', weight_decay),
     ('validation_momentum', validation_momentum),
-    ('\nnn_threshold', nn_threshold),
+    ('\nnon_negative', non_negative),
+    ('nn_threshold', nn_threshold),
     ('nn_rate', nn_rate),
     ('\npartial_n', partial_n),
     ('pu_partial_n', pu_partial_n),
     ('partial_n_kai', partial_n_kai),
     ('pu_partial_n_kai', pu_partial_n_kai),
+    ('\nls_prob_est', ls_prob_est),
+    ('pu_prob_est', pu_prob_est),
     ('\npu_plus_n', pu_plus_n),
     ('minus_n', minus_n),
     ('pu_then_pn', pu_then_pn),
     ('\npu', pu),
-    ('pn', pn),
+    ('unbiased_pn', unbiased_pn),
+    ('iwpn', iwpn),
     ('pnu', pnu),
     ('\nsets_save_name', sets_save_name),
     ('sets_load_name', sets_load_name),
@@ -194,6 +205,9 @@ else:
     train_data = mnist.train_data
 train_labels = mnist.train_labels
 
+# for i in range(10):
+#     print(torch.sum(train_labels == i))
+
 idxs = np.random.permutation(len(train_data))
 
 probs = pickle.load(open('prob_ac_pos.p', 'rb'))
@@ -227,19 +241,19 @@ sn_train_idxs = np.random.choice(
 sn_valid_idxs = np.random.choice(
     len(n_valid_data), snv_num, replace=False, p=probs_valid)
 
-plt.hist(probs[sn_train_idxs])
-plt.show()
+# plt.hist(probs[sn_train_idxs])
+# plt.show()
 
 
 if sets_load_name is None:
     p_set = torch.utils.data.TensorDataset(
         pick_p_data(train_data, train_labels, p_num).unsqueeze(1))
 
-    # sn_set = torch.utils.data.TensorDataset(
-    #     pick_sn_data(train_data, train_labels, sn_num).unsqueeze(1))
-
     sn_set = torch.utils.data.TensorDataset(
-        n_train_data[sn_train_idxs].unsqueeze(1))
+        pick_sn_data(train_data, train_labels, sn_num).unsqueeze(1))
+
+    # sn_set = torch.utils.data.TensorDataset(
+    #     n_train_data[sn_train_idxs].unsqueeze(1))
 
     n_set = torch.utils.data.TensorDataset(
         pick_n_data(train_data, train_labels, n_num).unsqueeze(1))
@@ -262,8 +276,8 @@ if sets_load_name is not None:
 
 
 p_validation = pick_p_data(valid_data, valid_labels, pv_num).unsqueeze(1)
-# sn_validation = pick_sn_data(valid_data, valid_labels, snv_num).unsqueeze(1)
-sn_validation = n_valid_data[sn_valid_idxs].unsqueeze(1)
+sn_validation = pick_sn_data(valid_data, valid_labels, snv_num).unsqueeze(1)
+# sn_validation = n_valid_data[sn_valid_idxs].unsqueeze(1)
 n_validation = pick_n_data(valid_data, valid_labels, nv_num).unsqueeze(1)
 u_validation = pick_u_data(valid_data, uv_num).unsqueeze(1)
 
@@ -333,57 +347,75 @@ class Net(nn.Module):
         return x
 
 
-if partial_n or pu_partial_n:
-    if dre_load_name is None:
-        print('')
-        model = Net(True).cuda() if args.cuda else Net(True)
-        dre = training.PosteriorProbability(
-                model, pi=pi, rho=rho,
-                lr=learning_rate_dre, weight_decay=weight_decay)
-        dre.train(p_set, sn_set, u_set, test_set_dre,
-                  p_batch_size, sn_batch_size, u_batch_size,
-                  p_validation, sn_validation, u_validation,
-                  dre_training_epochs)
-        if dre_save_name is not None:
-            pickle.dump(dre.model, open(dre_save_name, 'wb'))
+if ls_prob_est and dre_load_name is None:
+    print('')
+    model = Net(True).cuda() if args.cuda else Net(True)
+    dre = training.PosteriorProbability(
+            model, pi=pi, rho=rho,
+            lr=learning_rate_dre, weight_decay=weight_decay)
+    dre.train(p_set, sn_set, u_set, test_set_dre,
+              p_batch_size, sn_batch_size, u_batch_size,
+              p_validation, sn_validation, u_validation,
+              dre_training_epochs)
+    if dre_save_name is not None:
+        pickle.dump(dre.model, open(dre_save_name, 'wb'))
+    dre_model = dre.model
 
-    # model = Net().cuda() if args.cuda else Net()
-    # dre = training.PUClassifier3(
-    #         model, pi=pi, rho=rho,
-    #         lr=learning_rate_cls, weight_decay=weight_decay)
-    # dre.train(p_set, sn_set, u_set, test_set_dre,
-    #           p_batch_size, sn_batch_size, u_batch_size,
-    #           p_validation, sn_validation, u_validation, cls_training_epochs)
 
-    if dre_load_name is not None:
-        dre_model = pickle.load(open(dre_load_name, 'rb'))
+if pu_prob_est and dre_load_name is None:
+    print('')
+    model = Net().cuda() if args.cuda else Net()
+    dre = training.PUClassifier3(
+            model, pi=pi, rho=rho,
+            lr=learning_rate_cls, weight_decay=weight_decay,
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
+            prob_est=True)
+    dre.train(p_set, sn_set, u_set, test_set_dre,
+              p_batch_size, sn_batch_size, u_batch_size,
+              p_validation, sn_validation, u_validation,
+              cls_training_epochs, convex_epochs=convex_epochs)
+
+if dre_load_name is not None:
+    dre_model = pickle.load(open(dre_load_name, 'rb'))
+
+if partial_n:
+    print('')
+    model = Net().cuda() if args.cuda else Net()
+    cls = training.WeightedClassifier(
+            model, dre_model, pi=pi, rho=rho,
+            sep_value=sep_value, adjust_p=adjust_p, adjust_sn=adjust_sn,
+            lr=learning_rate_cls, weight_decay=weight_decay)
+    cls.train(p_set, sn_set, u_set, test_set_cls,
+              p_batch_size, sn_batch_size, u_batch_size,
+              p_validation, sn_validation, u_validation,
+              cls_training_epochs)
+
+if pu_partial_n:
+    print('')
+    model = Net().cuda() if args.cuda else Net()
+    cls = training.PUWeightedClassifier(
+            model, dre_model, pi=pi, rho=rho,
+            lr=learning_rate_cls, weight_decay=weight_decay,
+            weighted_fraction=non_pu_fraction,
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
+    cls.train(p_set, sn_set, u_set, test_set_cls,
+              p_batch_size, sn_batch_size, u_batch_size,
+              p_validation, sn_validation, u_validation,
+              cls_training_epochs)
+
+if iwpn:
+    print('')
+    model = Net().cuda() if args.cuda else Net()
+    if adjust_sn:
+        pi_ = pi/(pi+rho)
     else:
-        dre_model = dre.model
-
-    if partial_n:
-        print('')
-        model = Net().cuda() if args.cuda else Net()
-        cls = training.WeightedClassifier(
-                model, dre_model, pi=pi, rho=rho,
-                sep_value=sep_value, adjust_p=adjust_p, adjust_sn=adjust_sn,
-                lr=learning_rate_cls, weight_decay=weight_decay)
-        cls.train(p_set, sn_set, u_set, test_set_cls,
-                  p_batch_size, sn_batch_size, u_batch_size,
-                  p_validation, sn_validation, u_validation,
-                  cls_training_epochs)
-
-    if pu_partial_n:
-        print('')
-        model = Net().cuda() if args.cuda else Net()
-        cls = training.PUWeightedClassifier(
-                model, dre_model, pi=pi, rho=rho,
-                lr=learning_rate_cls, weight_decay=weight_decay,
-                weighted_fraction=non_pu_fraction,
-                nn=True, nn_threshold=nn_threshold, nn_rate=nn_rate)
-        cls.train(p_set, sn_set, u_set, test_set_cls,
-                  p_batch_size, sn_batch_size, u_batch_size,
-                  p_validation, sn_validation, u_validation,
-                  cls_training_epochs)
+        pi_ = pi
+    cls = training.PNClassifier(
+            model, pi=pi_, pp_model=dre_model,
+            adjust_p=adjust_p, adjust_n=adjust_sn,
+            lr=learning_rate_cls, weight_decay=weight_decay)
+    cls.train(p_set, sn_set, test_set_cls, p_batch_size, sn_batch_size,
+              p_validation, sn_validation, cls_training_epochs)
 
 if partial_n_kai or pu_partial_n_kai:
     # print('')
@@ -403,7 +435,7 @@ if partial_n_kai or pu_partial_n_kai:
         cls = training.WeightedClassifier2(
                 model, dre_model, pi=pi, rho=rho,
                 lr=learning_rate_cls, weight_decay=weight_decay,
-                nn=True, nn_threshold=nn_threshold, nn_rate=nn_rate)
+                nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
         cls.train(p_set, sn_set, u_set, test_set_cls,
                   p_batch_size, sn_batch_size, u_batch_size,
                   p_validation, sn_validation, u_validation,
@@ -416,7 +448,7 @@ if partial_n_kai or pu_partial_n_kai:
                 model, dre_model, pi=pi, rho=rho,
                 lr=learning_rate_cls, weight_decay=weight_decay,
                 weighted_fraction=non_pu_fraction,
-                nn=True, nn_threshold=nn_threshold, nn_rate=nn_rate)
+                nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
         cls.train(p_set, sn_set, u_set, test_set_cls,
                   p_batch_size, sn_batch_size, u_batch_size,
                   p_validation, sn_validation, u_validation,
@@ -428,7 +460,7 @@ if pu_plus_n:
     cls = training.PUClassifierPlusN(
             model, pi=pi, rho=rho,
             lr=learning_rate_cls, weight_decay=weight_decay,
-            nn=True, nn_threshold=nn_threshold, nn_rate=nn_rate,
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
             minus_n=minus_n)
     cls.train(p_set, sn_set, u_set, test_set_cls,
               p_batch_size, sn_batch_size, u_batch_size,
@@ -442,7 +474,7 @@ if pu_then_pn:
     cls = training.PUClassifier3(
             model, pi=pi, rho=rho,
             lr=learning_rate_cls, weight_decay=weight_decay,
-            nn=True, nn_threshold=nn_threshold, nn_rate=nn_rate)
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
     cls.train(p_set, sn_set, u_set, test_set_pre_cls,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
@@ -462,17 +494,17 @@ if pu:
     model = Net().cuda() if args.cuda else Net()
     cls = training.PUClassifier(
             model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay,
-            nn=True, nn_threshold=nn_threshold, nn_rate=nn_rate)
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
     cls.train(p_set, u_set, test_set_cls, p_batch_size, u_batch_size,
               p_validation, u_validation, cls_training_epochs)
 
-if pn:
+if unbiased_pn:
     print('')
     model = Net().cuda() if args.cuda else Net()
     cls = training.PNClassifier(
             model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay)
-    cls.train(p_set, sn_set, test_set_cls, p_batch_size, sn_batch_size,
-              p_validation, sn_validation, cls_training_epochs)
+    cls.train(p_set, n_set, test_set_cls, p_batch_size, n_batch_size,
+              p_validation, n_validation, cls_training_epochs)
 
 if pnu:
     print('')
@@ -481,7 +513,7 @@ if pnu:
             model, pi=pi,
             lr=learning_rate_cls, weight_decay=weight_decay,
             pn_fraction=non_pu_fraction,
-            nn=True, nn_threshold=nn_threshold, nn_rate=nn_rate)
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
     cls.train(p_set, n_set, u_set, test_set_cls,
               p_batch_size, n_batch_size, u_batch_size,
               p_validation, n_validation, u_validation, cls_training_epochs)

@@ -197,7 +197,7 @@ class PNClassifier(Classifier_from2):
                 self.basic_loss(fpx, convex) / fpx_prob)
         else:
             p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
-        if self.adjust_sn:
+        if self.adjust_n:
             fnx_prob = self.feed_in_batches(self.pp_model, nx)
             n_loss = (1-self.pi) * torch.mean(
                 self.basic_loss(-fnx, convex) / fnx_prob)
@@ -333,11 +333,12 @@ class Classifier_from3(Classifier):
 class PUClassifier3(Classifier_from3):
 
     def __init__(self, model,
-                 nn=True, nn_threshold=0, nn_rate=1/2, prob_est=False,
-                 *args, **kwargs):
+                 nn=True, nn_threshold=0, nn_rate=1/2,
+                 prob_est=False, *args, **kwargs):
         self.nn_rate = nn_rate
         self.nn_threshold = nn_threshold
         self.nn = nn
+        self.prob_est = prob_est
         if prob_est:
             self.test = self.test_prob_est
         super().__init__(model, *args, **kwargs)
@@ -356,6 +357,8 @@ class PUClassifier3(Classifier_from3):
                   - self.pi * torch.mean(self.basic_loss(-fpx, convex)))
         true_loss = p_loss + sn_loss + n_loss
         loss = true_loss
+        if not validation:
+            print(n_loss.item())
         if self.nn and n_loss < self.nn_threshold:
             loss = -n_loss * self.nn_rate
         return loss.cpu(), true_loss.cpu()
@@ -363,13 +366,37 @@ class PUClassifier3(Classifier_from3):
     def test_prob_est(self, test_set, to_print=True):
         x = test_set.tensors[0]
         target = test_set.tensors[1]
-        target = target/torch.mean(target)*(self.pi+self.rho)
-        output = F.sigmoid(self.feed_in_batches(
-            self.model, x, settings.test_batch_size)).cpu()
-        output = output/torch.mean(output)*(self.pi+self.rho)
-        error = torch.mean((target-output)**2).item()
+        output = self.feed_in_batches(
+                self.model, x, settings.test_batch_size).cpu()
+        output_prob = F.sigmoid(output)
+        error = torch.mean((target-output_prob)**2).item()
+        error_std = torch.std((target-output_prob)**2).item()
         if to_print:
             print('Test set: Error: {}'.format(error), flush=True)
+            print('Test set: Error Std: {}'.format(error_std), flush=True)
+        target_normalized = target/torch.mean(target)
+        output_prob = output_prob/torch.mean(output_prob)
+        error = torch.mean((target_normalized-output_prob)**2).item()
+        error_std = torch.std((target_normalized-output_prob)**2).item()
+        if to_print:
+            print('Test set: Normalized Error: {}'.format(error))
+            print('Test set: Normalized Error Std: {}'.format(error_std))
+        pred = torch.sign(output)
+        target_pred = torch.ones_like(target)
+        target_pred[target < 1/2] = -1
+        correct = torch.sum(pred.eq(target_pred).float()).item()
+        accuracy = 100 * correct/len(test_set)
+        self.test_accuracies.append(accuracy)
+        if to_print:
+            print('Test set: Accuracy: {}/{} ({:.2f}%)'.format(
+                    correct, len(test_set), accuracy), flush=True)
+        target_pred = target_pred.numpy().reshape(-1)
+        output = output.cpu().numpy().reshape(-1)
+        auc_score = roc_auc_score(target_pred, output) * 100
+        self.auc_scores.append(auc_score)
+        if to_print:
+            print('Test set: Auc Score: {:.2f}%'.format(auc_score))
+        x = test_set.tensors[0]
 
 
 class PUClassifierPlusN(Classifier_from3):
@@ -704,13 +731,35 @@ class PosteriorProbability(Training):
     def test(self, test_set, to_print=True):
         x = test_set.tensors[0]
         target = test_set.tensors[1]
-        target = target/torch.mean(target)*(self.pi+self.rho)
         output = self.feed_in_batches(
-            self.model, x, settings.test_batch_size).cpu()
-        output = output/torch.mean(output)*(self.pi+self.rho)
+                self.model, x, settings.test_batch_size).cpu()
         error = torch.mean((target-output)**2).item()
+        error_std = torch.std((target-output)**2).item()
         if to_print:
             print('Test set: Error: {}'.format(error), flush=True)
+            print('Test set: Error Std: {}'.format(error_std), flush=True)
+        target_norm = target/torch.mean(target)
+        output_norm = output/torch.mean(output)
+        error = torch.mean((target_norm-output_norm)**2).item()
+        error_std = torch.std((target_norm-output_norm)**2).item()
+        if to_print:
+            print('Test set: Normalized Error: {}'.format(error))
+            print('Test set: Normalized Error Std: {}'.format(error_std))
+        pred = torch.sign(output-1/2)
+        target_pred = torch.ones_like(target)
+        target_pred[target < 1/2] = -1
+        correct = torch.sum(pred.eq(target_pred).float()).item()
+        accuracy = 100 * correct/len(test_set)
+        self.test_accuracies.append(accuracy)
+        if to_print:
+            print('Test set: Accuracy: {}/{} ({:.2f}%)'.format(
+                    correct, len(test_set), accuracy), flush=True)
+        target_pred = target_pred.numpy().reshape(-1)
+        output = output.cpu().numpy().reshape(-1)
+        auc_score = roc_auc_score(target_pred, output) * 100
+        self.auc_scores.append(auc_score)
+        if to_print:
+            print('Test set: Auc Score: {:.2f}%'.format(auc_score))
 
 
 class PosteriorProbability2(Training):

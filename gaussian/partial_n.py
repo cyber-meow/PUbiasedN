@@ -20,10 +20,14 @@ u_num = 100
 
 pv_num = 15
 snv_num = 75
-uv_num = 75
+uv_num = 25
 
 t_num = 60000
 es_num = 50000
+
+sep_value = 0.5
+adjust_p = False
+adjust_sn = True
 
 dre_training_epochs = 50
 cls_training_epochs = 100
@@ -42,7 +46,7 @@ nn_threshold = 0
 nn_rate = 1/10000
 sigmoid_output = True
 
-partial_n = False
+partial_n = True
 pu = False
 pu_then_pn = False
 
@@ -57,6 +61,9 @@ params = OrderedDict([
     ('uv_num', uv_num),
     ('\nt_num', t_num),
     ('es_num', es_num),
+    ('\nsep_value', sep_value),
+    ('adjust_p', adjust_p),
+    ('adjust_sn', adjust_sn),
     ('\ndre_training_epochs', dre_training_epochs),
     ('cls_training_epochs', cls_training_epochs),
     ('\np_batch_size', p_batch_size),
@@ -190,7 +197,8 @@ if partial_n:
     model = nets.Net().cuda() if args.cuda else nets.Net()
     # model = nets.LinearModel().cuda() if args.cuda else nets.LinearModel()
     cls = training.WeightedClassifier(
-            model, dre.model,
+            model, dre.model, sep_value=sep_value,
+            adjust_p=adjust_p, adjust_sn=adjust_sn,
             pi=pi, rho=rho, lr=learning_rate_cls, weight_decay=weight_decay)
     cls.train(p_set, sn_set, u_set, test_set_cls,
               p_batch_size, sn_batch_size, u_batch_size,

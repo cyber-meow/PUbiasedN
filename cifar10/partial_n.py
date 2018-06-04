@@ -56,7 +56,8 @@ partial_n = False
 pu_then_pn = False
 
 pu = False
-pn = False
+unbiased_pn = False
+iwpn = False
 pnu = True
 
 sets_save_name = None
@@ -97,7 +98,8 @@ params = OrderedDict([
     ('\npartial_n', partial_n),
     ('pu_then_pn', pu_then_pn),
     ('\npu', pu),
-    ('pn', pn),
+    ('unbiased_pn', unbiased_pn),
+    ('iwpn', iwpn),
     ('pnu', pnu),
     ('\nsets_save_name', sets_save_name),
     ('sets_load_name', sets_load_name),
@@ -251,7 +253,7 @@ if pu:
     cls.train(p_set, u_set, test_set_cls, p_batch_size, u_batch_size,
               p_validation, u_validation, cls_training_epochs)
 
-if pn:
+if unbiased_pn:
     print('')
     model = PreActResNet18().cuda() if args.cuda else PreActResNet18()
     cls = training.PNClassifier(
@@ -272,7 +274,7 @@ if pnu:
               p_validation, n_validation, u_validation,
               cls_training_epochs)
 
-if partial_n:
+if partial_n or iwpn:
     if dre_load_name is None:
         print('')
         model = (PreActResNet18(True).cuda()
@@ -293,6 +295,7 @@ if partial_n:
     else:
         dre_model = dre.model
 
+if partial_n:
     print('')
     model = PreActResNet18().cuda() if args.cuda else PreActResNet18()
     cls = training.WeightedClassifier(
@@ -303,6 +306,16 @@ if partial_n:
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
               cls_training_epochs)
+
+if iwpn:
+    print('')
+    model = PreActResNet18().cuda() if args.cuda else PreActResNet18()
+    cls = training.PNClassifier(
+            model, pi=pi/(pi+rho), pp_model=dre_model,
+            adjust_p=adjust_p, adjust_n=adjust_sn,
+            lr=learning_rate_cls, weight_decay=weight_decay)
+    cls.train(p_set, sn_set, test_set_cls, p_batch_size, sn_batch_size,
+              p_validation, sn_validation, cls_training_epochs)
 
 if pu_then_pn:
     print('')
