@@ -13,17 +13,17 @@ import settings
 from nets import PreActResNet18
 
 
-p_num = 3000
-n_num = 3000
-sn_num = 3000
-u_num = 30000
+p_num = 1000
+n_num = 1000
+sn_num = 1000
+u_num = 10000
 
-pv_num = 300
-nv_num = 300
-snv_num = 300
-uv_num = 3000
+pv_num = 100
+nv_num = 100
+snv_num = 100
+uv_num = 1000
 
-u_cut = 45000
+u_cut = 40000
 
 pi = 0.49
 rho = 0.2
@@ -36,35 +36,41 @@ sep_value = 0.3
 adjust_p = False
 adjust_sn = True
 
-dre_training_epochs = 20
+dre_training_epochs = 200
 cls_training_epochs = 200
+convex_epochs = 200
 
 p_batch_size = 100
 n_batch_size = 100
 sn_batch_size = 100
 u_batch_size = 1000
 
-learning_rate_dre = 1e-4
+learning_rate_dre = 1e-3
 learning_rate_cls = 1e-3
 weight_decay = 1e-4
 validation_momentum = 0.5
+beta = 0
 
+non_negative = False
 nn_threshold = 0
 nn_rate = 1/3
 
-partial_n = False
+ls_prob_est = False
+pu_prob_est = False
+
+partial_n = True
 pu_then_pn = False
 
 pu = False
 unbiased_pn = False
 iwpn = False
-pnu = True
+pnu = False
 
 sets_save_name = None
-sets_load_name = 'pickle/cifar10/3000_3000_30000/sets_rho015_357N.p'
+sets_load_name = 'pickle/cifar10/1000_1000_10000/sets_357N_a.p'
 
 dre_save_name = None
-dre_load_name = 'pickle/cifar10/3000_3000_30000/dre_model_rho015_357N.p'
+dre_load_name = 'pickle/cifar10/1000_1000_10000/ls_prob_est_rho02_357N_a.p'
 
 
 params = OrderedDict([
@@ -85,6 +91,7 @@ params = OrderedDict([
     ('adjust_sn', adjust_sn),
     ('\ndre_training_epochs', dre_training_epochs),
     ('cls_training_epochs', cls_training_epochs),
+    ('convex_epochs', convex_epochs),
     ('\np_batch_size', p_batch_size),
     ('sn_batch_size', sn_batch_size),
     ('n_batch_size', n_batch_size),
@@ -93,8 +100,12 @@ params = OrderedDict([
     ('learning_rate_cls', learning_rate_cls),
     ('weight_decay', weight_decay),
     ('validation_momentum', validation_momentum),
-    ('\nnn_threshold', nn_threshold),
+    ('beta', beta),
+    ('\nnon_negative', non_negative),
+    ('nn_threshold', nn_threshold),
     ('nn_rate', nn_rate),
+    ('\nls_prob_est', ls_prob_est),
+    ('pu_prob_est', pu_prob_est),
     ('\npartial_n', partial_n),
     ('pu_then_pn', pu_then_pn),
     ('\npu', pu),
@@ -252,9 +263,10 @@ if pu:
     model = PreActResNet18().cuda() if args.cuda else PreActResNet18()
     cls = training.PUClassifier(
             model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay,
-            nn=True, nn_threshold=nn_threshold, nn_rate=nn_rate)
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
     cls.train(p_set, u_set, test_set_cls, p_batch_size, u_batch_size,
-              p_validation, u_validation, cls_training_epochs)
+              p_validation, u_validation,
+              cls_training_epochs, convex_epochs=convex_epochs)
 
 if unbiased_pn:
     print('')
@@ -271,32 +283,44 @@ if pnu:
             model, pi=pi,
             lr=learning_rate_cls, weight_decay=weight_decay,
             pn_fraction=non_pu_fraction,
-            nn=True, nn_threshold=nn_threshold, nn_rate=nn_rate)
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
     cls.train(p_set, n_set, u_set, test_set_cls,
               p_batch_size, n_batch_size, u_batch_size,
               p_validation, n_validation, u_validation,
               cls_training_epochs)
 
-if partial_n or iwpn:
-    if dre_load_name is None:
-        print('')
-        model = (PreActResNet18(True).cuda()
-                 if args.cuda
-                 else PreActResNet18(True))
-        dre = training.PosteriorProbability(
-                model, pi=pi, rho=rho,
-                lr=learning_rate_dre, weight_decay=weight_decay)
-        dre.train(p_set, sn_set, u_set, test_set_dre,
-                  p_batch_size, sn_batch_size, u_batch_size,
-                  p_validation, sn_validation, u_validation,
-                  dre_training_epochs)
-        if dre_save_name is not None:
-            pickle.dump(dre.model, open(dre_save_name, 'wb'))
+if ls_prob_est and dre_load_name is None:
+    print('')
+    model = PreActResNet18().cuda() if args.cuda else PreActResNet18()
+    dre = training.PosteriorProbability(
+            model, pi=pi, rho=rho, beta=beta,
+            lr=learning_rate_dre, weight_decay=weight_decay)
+    dre.train(p_set, sn_set, u_set, test_set_dre,
+              p_batch_size, sn_batch_size, u_batch_size,
+              p_validation, sn_validation, u_validation,
+              dre_training_epochs)
+    if dre_save_name is not None:
+        pickle.dump(dre.model, open(dre_save_name, 'wb'))
+    dre_model = dre.model
 
-    if dre_load_name is not None:
-        dre_model = pickle.load(open(dre_load_name, 'rb'))
-    else:
-        dre_model = dre.model
+if pu_prob_est and dre_load_name is None:
+    print('')
+    model = PreActResNet18().cuda() if args.cuda else PreActResNet18()
+    dre = training.PUClassifier3(
+            model, pi=pi, rho=rho,
+            lr=learning_rate_cls, weight_decay=weight_decay,
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
+            prob_est=True)
+    dre.train(p_set, sn_set, u_set, test_set_dre,
+              p_batch_size, sn_batch_size, u_batch_size,
+              p_validation, sn_validation, u_validation,
+              cls_training_epochs, convex_epochs=convex_epochs)
+    if dre_save_name is not None:
+        pickle.dump(dre.model, open(dre_save_name, 'wb'))
+    dre_model = dre.model
+
+if dre_load_name is not None:
+    dre_model = pickle.load(open(dre_load_name, 'rb'))
 
 if partial_n:
     print('')
@@ -308,7 +332,7 @@ if partial_n:
     cls.train(p_set, sn_set, u_set, test_set_cls,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
-              cls_training_epochs)
+              cls_training_epochs, convex_epochs=convex_epochs)
 
 if iwpn:
     print('')
@@ -318,7 +342,8 @@ if iwpn:
             adjust_p=adjust_p, adjust_n=adjust_sn,
             lr=learning_rate_cls, weight_decay=weight_decay)
     cls.train(p_set, sn_set, test_set_cls, p_batch_size, sn_batch_size,
-              p_validation, sn_validation, cls_training_epochs)
+              p_validation, sn_validation,
+              cls_training_epochs, convex_epochs=convex_epochs)
 
 if pu_then_pn:
     print('')
@@ -326,7 +351,7 @@ if pu_then_pn:
     cls = training.PUClassifier3(
             model, pi=pi, rho=rho,
             lr=learning_rate_cls, weight_decay=weight_decay,
-            nn=True, nn_threshold=nn_threshold, nn_rate=nn_rate)
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
     cls.train(p_set, sn_set, u_set, test_set_pre_cls,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,

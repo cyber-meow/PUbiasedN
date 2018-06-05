@@ -189,6 +189,7 @@ class PNClassifier(Classifier_from2):
         if validation:
             fpx = self.feed_in_batches(self.model, px)
             fnx = self.feed_in_batches(self.model, nx)
+            convex = False
         else:
             fpx, fnx = self.feed_together(self.model, px, nx)
         if self.adjust_p:
@@ -240,6 +241,7 @@ class PUClassifier(Classifier_from2):
         if validation:
             fpx = self.feed_in_batches(self.model, px)
             fux = self.feed_in_batches(self.model, ux)
+            convex = False
         else:
             fpx, fux = self.feed_together(self.model, px, ux)
         p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
@@ -361,26 +363,27 @@ class PUClassifier3(Classifier_from3):
     def average_loss(self, fx):
         negative_logistic = nn.LogSigmoid()
         logistic_loss = torch.mean(-negative_logistic(fx))
-        zero_one_loss = torch.mean((1-torch.sign(fx)/2))
-        return torch.cat([logistic_loss, zero_one_loss])
+        sigmoid = nn.Sigmoid()
+        sigmoid_loss = torch.mean(sigmoid(-fx))
+        return torch.tensor([logistic_loss, sigmoid_loss])
 
-    def validation_prob_est(self, p_val, sn_val, u_val):
+    def validation_prob_est(self, p_val, sn_val, u_val, convex):
         fpx = self.feed_in_batches(self.model, p_val)
         fsnx = self.feed_in_batches(self.model, sn_val)
         fux = self.feed_in_batches(self.model, u_val)
-        ls_loss = (torch.mean(fux**2)
-                   - 2 * torch.mean(fpx) * self.pi
-                   - 2 * torch.mean(fsnx) * self.rho)
-        print('Ls Validation Loss:', ls_loss.cpu().item(), flush=True)
+        ls_loss = (torch.mean(F.sigmoid(fux)**2)
+                   - 2 * torch.mean(F.sigmoid(fpx)) * self.pi
+                   - 2 * torch.mean(F.sigmoid(fsnx)) * self.rho)
+        print('Validation Ls Loss:', ls_loss.cpu().item(), flush=True)
         p_loss = self.pi * self.average_loss(fpx)
         sn_loss = self.rho * self.average_loss(fsnx)
         n_loss = (self.average_loss(-fux)
                   - self.rho * self.average_loss(-fsnx)
                   - self.pi * self.average_loss(-fpx))
         logistic_loss = p_loss[0] + sn_loss[0] + n_loss[0]
-        print('Log Validation Loss:', logistic_loss.cpu().item(), flush=True)
-        zero_one_loss = p_loss[1] + sn_loss[1] + n_loss[1]
-        print('01 Validation Loss:', zero_one_loss.cpu().item(), flush=True)
+        print('Validation Log Loss:', logistic_loss.cpu().item(), flush=True)
+        sigmoid_loss = p_loss[1] + sn_loss[1] + n_loss[1]
+        print('Validation Sig Loss:', sigmoid_loss.cpu().item(), flush=True)
         if self.curr_accu_vloss is None:
             self.curr_accu_vloss = ls_loss.cpu().item()
         else:
@@ -464,6 +467,7 @@ class PUClassifierPlusN(Classifier_from3):
             fsnx = self.feed_in_batches(self.model, snx)
             fsnx2 = self.feed_in_batches(self.model, snx2)
             fux = self.feed_in_batches(self.model, ux)
+            convex = False
         else:
             fpx, fsnx, fsnx2, fux = self.feed_together(
                 self.model, px, snx, snx2, ux)
@@ -498,6 +502,7 @@ class PNUClassifier(Classifier_from3):
             fpx = self.feed_in_batches(self.model, px)
             fnx = self.feed_in_batches(self.model, nx)
             fux = self.feed_in_batches(self.model, ux)
+            convex = False
         else:
             fpx, fnx, fux = self.feed_together(self.model, px, nx, ux)
         p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
@@ -531,16 +536,15 @@ class WeightedClassifier(Classifier_from3):
             fpx = self.feed_in_batches(self.model, px)
             fux = self.feed_in_batches(self.model, ux)
             fsnx = self.feed_in_batches(self.model, snx)
+            convex = False
         else:
             fpx, fsnx, fux = self.feed_together(self.model, px, snx, ux)
-            fpx_prob, fsnx_prob, fux_prob = self.feed_together(
-                self.pp_model, px, snx, ux)
         # Divide into two parts according to the value of p(s=1|x)
-        fux_prob = self.feed_in_batches(self.pp_model, ux)
-        fux_prob = fux_prob/torch.mean(fux_prob)*(self.pi+self.rho)
+        fux_prob = F.sigmoid(self.feed_in_batches(self.pp_model, ux))
+        # fux_prob = fux_prob/torch.mean(fux_prob)*(self.pi+self.rho)
         fux_prob[fux_prob > self.sep_value] = 1
         if self.adjust_p:
-            fpx_prob = self.feed_in_batches(self.pp_model, px)
+            fpx_prob = F.sigmoid(self.feed_in_batches(self.pp_model, px))
             fpx_prob[fpx_prob <= self.sep_value] = 1
             p_loss = self.pi * torch.mean(
                 self.basic_loss(fpx, convex)
@@ -548,7 +552,7 @@ class WeightedClassifier(Classifier_from3):
         else:
             p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
         if self.adjust_sn:
-            fsnx_prob = self.feed_in_batches(self.pp_model, snx)
+            fsnx_prob = F.sigmoid(self.feed_in_batches(self.pp_model, snx))
             fsnx_prob[fsnx_prob <= self.sep_value] = 1
             sn_loss = self.rho * torch.mean(
                 self.basic_loss(-fsnx, convex) / fsnx_prob)
@@ -579,6 +583,7 @@ class WeightedClassifier2(Classifier_from3):
             # fpx_prob = self.feed_in_batches(self.pp_model, px)
             # fsnx_prob = self.feed_in_batches(self.pp_model, snx)
             fux_prob = self.feed_in_batches(self.pp_model, ux)
+            convex = False
         else:
             fpx, fsnx, fux = self.feed_together(self.model, px, snx, ux)
             self.pp_model.eval()
@@ -617,6 +622,7 @@ class PUWeightedClassifier(Classifier_from3):
             fsnx = self.feed_in_batches(self.model, snx)
             fux = self.feed_in_batches(self.model, ux)
             fux_prob = self.feed_in_batches(self.pp_model, ux)
+            convex = False
         else:
             fpx, fsnx, fux = self.feed_together(self.model, px, snx, ux)
             self.pp_model.eval()
@@ -655,6 +661,7 @@ class PUWeightedClassifier2(Classifier_from3):
             fsnx = self.feed_in_batches(self.model, snx)
             fux = self.feed_in_batches(self.model, ux)
             fux_prob = self.feed_in_batches(self.pp_model, ux)
+            convex = False
         else:
             fpx, fsnx, fux = self.feed_together(self.model, px, snx, ux)
             self.pp_model.eval()
@@ -742,10 +749,10 @@ class PosteriorProbability(Training):
 
     def compute_loss(self, px, snx, ux):
         fpx, fsnx, fux = self.feed_together(self.model, px, snx, ux)
-        fpx_mean = torch.mean(fpx)
-        fsnx_mean = torch.mean(fsnx)
-        fux_mean = torch.mean(fux)
-        fux2_mean = torch.mean(fux**2)
+        fpx_mean = torch.mean(F.sigmoid(fpx))
+        fsnx_mean = torch.mean(F.sigmoid(fsnx))
+        fux_mean = torch.mean(F.sigmoid(fux))
+        fux2_mean = torch.mean(F.sigmoid(fux)**2)
         loss = (fux2_mean - 2*fpx_mean*self.pi - 2*fsnx_mean*self.rho
                 + self.beta * (fux_mean - self.pi - self.rho)**2)
         print(fux2_mean.item(),
@@ -756,16 +763,17 @@ class PosteriorProbability(Training):
     def average_loss(self, fx):
         negative_logistic = nn.LogSigmoid()
         logistic_loss = torch.mean(-negative_logistic(fx))
-        zero_one_loss = torch.mean((1-torch.sign(fx)/2))
-        return torch.tensor([logistic_loss, zero_one_loss])
+        sigmoid = nn.Sigmoid()
+        sigmoid_loss = torch.mean(sigmoid(-fx))
+        return torch.tensor([logistic_loss, sigmoid_loss])
 
     def validation(self, p_val, sn_val, u_val):
         fpx = self.feed_in_batches(self.model, p_val)
         fsnx = self.feed_in_batches(self.model, sn_val)
         fux = self.feed_in_batches(self.model, u_val)
-        ls_loss = (torch.mean(fux**2)
-                   - 2 * torch.mean(fpx) * self.pi
-                   - 2 * torch.mean(fsnx) * self.rho)
+        ls_loss = (torch.mean(F.sigmoid(fux)**2)
+                   - 2 * torch.mean(F.sigmoid(fpx)) * self.pi
+                   - 2 * torch.mean(F.sigmoid(fsnx)) * self.rho)
         print('Validation Ls Loss:', ls_loss.cpu().item(), flush=True)
         p_loss = self.pi * self.average_loss(fpx)
         sn_loss = self.rho * self.average_loss(fsnx)
@@ -774,8 +782,8 @@ class PosteriorProbability(Training):
                   - self.pi * self.average_loss(-fpx))
         logistic_loss = p_loss[0] + sn_loss[0] + n_loss[0]
         print('Validation Log Loss:', logistic_loss.cpu().item(), flush=True)
-        zero_one_loss = p_loss[1] + sn_loss[1] + n_loss[1]
-        print('Validation 01 Loss:', zero_one_loss.cpu().item(), flush=True)
+        sigmoid_loss = p_loss[1] + sn_loss[1] + n_loss[1]
+        print('Validation Sig Loss:', sigmoid_loss.cpu().item(), flush=True)
         if self.curr_accu_vloss is None:
             self.curr_accu_vloss = ls_loss.cpu().item()
         else:
@@ -790,8 +798,8 @@ class PosteriorProbability(Training):
     def test(self, test_set, to_print=True):
         x = test_set.tensors[0]
         target = test_set.tensors[1]
-        output = self.feed_in_batches(
-                self.model, x, settings.test_batch_size).cpu()
+        output = F.sigmoid(self.feed_in_batches(
+                self.model, x, settings.test_batch_size).cpu())
         error = torch.mean((target-output)**2).item()
         error_std = torch.std((target-output)**2).item()
         if to_print:

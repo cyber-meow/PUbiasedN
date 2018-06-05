@@ -19,8 +19,9 @@ def read_directory(dir_name):
 
     plot_all = False
     to_plot = {}
-    names = ['partial_n', 'pu_partial_n', 'nnpu',
-             'pu+n', 'pu+-n', 'pu_then_pn',
+    names = ['partial_n', 'ls_partial_n', 'pu_est_partial_n', 'pu_partial_n',
+             'pu_est_log_partial_n',
+             'nnpu', 'sig_nnpu', 'pu+n', 'pu+-n', 'pu_then_pn',
              'unbiased_pn', 'pn', 'iwpn', 'iwapn',
              'pu_prob_est', 'pu_prob_sig_est',
              'n2pu_prob_est', 'n2pu_prob_sig_est', 'ls_prob_est']
@@ -29,8 +30,9 @@ def read_directory(dir_name):
               'test normalized square error',
               'test normalized square error std',
               'test accuracy', 'test auc score',
-              'validation loss', 'training loss']
-    plot_or_not = [False for _ in range(8)]
+              'training loss', 'validation loss', 'validation ls loss',
+              'validation logistic loss', 'validation sigmoid loss']
+    plot_or_not = [False for _ in range(11)]
 
     for f in listdir(dir_name):
         if f != 'all' and isfile(join(dir_name, f)):
@@ -39,8 +41,8 @@ def read_directory(dir_name):
             for name in names:
                 if f.startswith('{}_{}'.format(dataset, name)):
                     if name not in to_plot:
-                        to_plot[name] = [[] for _ in range(8)]
-                    for i in range(8):
+                        to_plot[name] = [[] for _ in range(11)]
+                    for i in range(11):
                         if (curves[i] != []
                                 and not (i == 5 and name == 'pu_then_pn')):
                             plot_or_not[i] = True
@@ -48,7 +50,7 @@ def read_directory(dir_name):
     for i in [2, 3]:
         plot_or_not[i] = False
 
-    for i in range(8):
+    for i in range(11):
         if plot_or_not[i]:
             plt.figure()
             plt.title(titles[i])
@@ -71,7 +73,8 @@ def read_one_file(filename):
         content = f.readlines()
     errs, err_stds, n_errs, n_err_stds = [], [], [], []
     accs, aucs = [], []
-    losses, va_losses = [], []
+    losses, val_losses = [], []
+    val_ls_losses, val_log_losses, val_sig_losses = [], [], []
     for i, line in enumerate(content):
         if line == '\n':
             errs, err_stds, n_errs, n_err_stds = [], [], [], []
@@ -99,18 +102,31 @@ def read_one_file(filename):
                 va_losses.append(float(a[1]))
             else:
                 va_losses.append(float(a[1])*1+va_losses[-1]*0)
-        if (line.startswith('Validation')
+        if line.startswith('Epoch'):
+            a = line.split()
+            losses.append(float(a[4]))
+        if (line.startswith('Validation Loss')
             and (content[i+1].startswith('Epoch')
                  or (dataset == 'cifar10'
                      and not content[i+1].startswith('Validation')
                      and content[i+10].startswith('Epoch')))):
             a = line.split()
-            va_losses.append(float(a[2]))
-        if line.startswith('Epoch'):
+            val_losses.append(float(a[2]))
+        if (line.startswith('Validation Ls Loss')
+                and (content[i+3].startswith('Epoch'))):
             a = line.split()
-            losses.append(float(a[4]))
+            val_ls_losses.append(float(a[3]))
+        if (line.startswith('Validation Log Loss')
+                and (content[i+2].startswith('Epoch'))):
+            a = line.split()
+            val_log_losses.append(float(a[3]))
+        if (line.startswith('Validation Sig Loss')
+                and (content[i+1].startswith('Epoch'))):
+            a = line.split()
+            val_sig_losses.append(float(a[3]))
     return (errs, err_stds, n_errs[2:], n_err_stds[2:],
-            accs, aucs, va_losses, losses)
+            accs, aucs, losses, val_losses,
+            val_ls_losses, val_log_losses, val_sig_losses)
 
 
 read_directory(args.directory_path)

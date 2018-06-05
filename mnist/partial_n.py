@@ -15,7 +15,7 @@ import training
 import settings
 
 
-normalize = False
+normalize = True
 
 p_num = 1000
 n_num = 1000
@@ -30,7 +30,7 @@ uv_num = 1000
 u_cut = 40000
 
 pi = 0.49
-rho = 0.15
+rho = 0.2
 
 # neg_ps = [0.6, 0.15, 0.03, 0.2, 0.02]
 # neg_ps = [0.2, 0.2, 0.2, 0.2, 0.2]
@@ -51,7 +51,7 @@ n_batch_size = 100
 sn_batch_size = 100
 u_batch_size = 1000
 
-learning_rate_dre = 1e-4
+learning_rate_dre = 1e-3
 learning_rate_cls = 1e-3
 weight_decay = 1e-4
 validation_momentum = 0.5
@@ -61,12 +61,13 @@ non_negative = False
 nn_threshold = 0
 nn_rate = 1/3
 
+ls_prob_est = True
+pu_prob_est = False
+
 partial_n = False
 pu_partial_n = False
 partial_n_kai = False
 pu_partial_n_kai = False
-ls_prob_est = True
-pu_prob_est = False
 
 pu_plus_n = False
 minus_n = False
@@ -77,13 +78,13 @@ unbiased_pn = False
 iwpn = False
 pnu = False
 
-# sets_load_name = None
+# sets_save_name = None
 sets_save_name = 'pickle/mnist/1000_1000_10000/135N/sets_135N_a.p'
 sets_load_name = None
 
-# dre_load_name = None
+# dre_save_name = None
 dre_save_name = ('pickle/mnist/1000_1000_10000/135N/'
-                 + 'ls_prob_est_rho015_135N_a.p')
+                 + 'ls_prob_est_rho02_135N_a.p')
 dre_load_name = None
 
 
@@ -119,12 +120,12 @@ params = OrderedDict([
     ('\nnon_negative', non_negative),
     ('nn_threshold', nn_threshold),
     ('nn_rate', nn_rate),
+    ('\nls_prob_est', ls_prob_est),
+    ('pu_prob_est', pu_prob_est),
     ('\npartial_n', partial_n),
     ('pu_partial_n', pu_partial_n),
     ('partial_n_kai', partial_n_kai),
     ('pu_partial_n_kai', pu_partial_n_kai),
-    ('\nls_prob_est', ls_prob_est),
-    ('pu_prob_est', pu_prob_est),
     ('\npu_plus_n', pu_plus_n),
     ('minus_n', minus_n),
     ('pu_then_pn', pu_then_pn),
@@ -194,8 +195,13 @@ def pick_n_data(data, labels, n2):
     return data[np.random.permutation(selected_n)]
 
 
-def pick_u_data(data, n):
+def pick_u_data(data, labels, n):
     selected_u = np.random.choice(len(data), n, replace=False)
+    up_num = torch.sum(labels[selected_u] % 2 == 0).item()
+    un_num = torch.sum(labels[selected_u] % 2 == 1).item()
+    print('P in validation U data', up_num)
+    print('N in validation U data', un_num)
+    print('')
     return data[selected_u]
 
 
@@ -206,6 +212,15 @@ if normalize:
 else:
     train_data = mnist.train_data
 train_labels = mnist.train_labels
+
+if normalize:
+    test_data = torch.zeros(mnist_test.test_data.size())
+    for i, (image, _) in enumerate(mnist_test):
+        test_data[i] = image
+else:
+    test_data = mnist_test.test_data
+test_labels = mnist_test.test_labels
+
 
 # for i in range(10):
 #     print(torch.sum(train_labels == i))
@@ -268,7 +283,7 @@ if sets_load_name is None:
     #     train_labels[selected_u].unsqueeze(1))
 
     u_set = torch.utils.data.TensorDataset(
-        pick_u_data(train_data, u_num).unsqueeze(1))
+        pick_u_data(train_data, train_labels, u_num).unsqueeze(1))
 
     p_validation = pick_p_data(
         valid_data, valid_labels, pv_num).unsqueeze(1)
@@ -280,7 +295,7 @@ if sets_load_name is None:
     n_validation = pick_n_data(
         valid_data, valid_labels, nv_num).unsqueeze(1)
 
-    u_validation = pick_u_data(valid_data, uv_num).unsqueeze(1)
+    u_validation = pick_u_data(valid_data, valid_labels, uv_num).unsqueeze(1)
 
     if sets_save_name is not None:
         pickle.dump(
@@ -292,15 +307,6 @@ if sets_load_name is not None:
     p_set, sn_set, n_set, u_set,\
         p_validation, sn_validation, n_validation, u_validation =\
         pickle.load(open(sets_load_name, 'rb'))
-
-
-if normalize:
-    test_data = torch.zeros(mnist_test.test_data.size())
-    for i, (image, _) in enumerate(mnist_test):
-        test_data[i] = image
-else:
-    test_data = mnist_test.test_data
-test_labels = mnist_test.test_labels
 
 
 test_posteriors = torch.zeros(test_labels.size())
@@ -361,7 +367,7 @@ class Net(nn.Module):
 
 if ls_prob_est and dre_load_name is None:
     print('')
-    model = Net(True).cuda() if args.cuda else Net(True)
+    model = Net().cuda() if args.cuda else Net()
     dre = training.PosteriorProbability(
             model, pi=pi, rho=rho, beta=beta,
             lr=learning_rate_dre, weight_decay=weight_decay)
@@ -372,7 +378,6 @@ if ls_prob_est and dre_load_name is None:
     if dre_save_name is not None:
         pickle.dump(dre.model, open(dre_save_name, 'wb'))
     dre_model = dre.model
-
 
 if pu_prob_est and dre_load_name is None:
     print('')
@@ -386,9 +391,33 @@ if pu_prob_est and dre_load_name is None:
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
               cls_training_epochs, convex_epochs=convex_epochs)
+    if dre_save_name is not None:
+        pickle.dump(dre.model, open(dre_save_name, 'wb'))
+    dre_model = dre.model
 
 if dre_load_name is not None:
     dre_model = pickle.load(open(dre_load_name, 'rb'))
+    # dre_model.eval()
+    # px = dre_model(p_validation.type(settings.dtype))
+    # snx = dre_model(sn_validation.type(settings.dtype))
+    # ux = dre_model(u_validation.type(settings.dtype))
+    # nl = nn.LogSigmoid()
+    # print((torch.mean(-nl(ux))
+    #       - rho * torch.mean(-nl(-snx))
+    #       - pi * torch.mean(-nl(-px))).item())
+    # plt.figure()
+    # plt.title('p')
+    # # plt.hist(np.log(1+np.exp(px.detach().cpu().numpy())))
+    # plt.hist(px.detach().cpu().numpy())
+    # plt.figure()
+    # plt.title('sn')
+    # # plt.hist(np.log(1+np.exp(snx.detach().cpu().numpy())))
+    # plt.hist(snx.detach().cpu().numpy())
+    # plt.figure()
+    # plt.title('u')
+    # # plt.hist(np.log(1+np.exp(ux.detach().cpu().numpy())))
+    # plt.hist(ux.detach().cpu().numpy())
+    # plt.show()
 
 if partial_n:
     print('')
