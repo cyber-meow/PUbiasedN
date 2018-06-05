@@ -195,18 +195,21 @@ if sets_load_name is None:
 
     u_set = torch.utils.data.TensorDataset(pick_u_data(train_data, u_num))
 
+    p_validation = pick_p_data(valid_data, valid_labels, pv_num)
+    sn_validation = pick_sn_data(valid_data, valid_labels, snv_num)
+    n_validation = pick_n_data(valid_data, valid_labels, nv_num)
+    u_validation = pick_u_data(valid_data, uv_num)
+
     if sets_save_name is not None:
         pickle.dump(
-            (p_set, sn_set, n_set, u_set), open(sets_save_name, 'wb'))
+            (p_set, sn_set, n_set, u_set,
+             p_validation, sn_validation, n_validation, u_validation),
+            open(sets_save_name, 'wb'))
 
 if sets_load_name is not None:
-    p_set, sn_set, n_set, u_set = pickle.load(open(sets_load_name, 'rb'))
-
-
-p_validation = pick_p_data(valid_data, valid_labels, pv_num)
-sn_validation = pick_sn_data(valid_data, valid_labels, snv_num)
-n_validation = pick_n_data(valid_data, valid_labels, nv_num)
-u_validation = pick_u_data(valid_data, uv_num)
+    p_set, sn_set, n_set, u_set,\
+        p_validation, sn_validation, n_validation, u_validation =\
+        pickle.load(open(sets_load_name, 'rb'))
 
 
 test_data = torch.zeros(cifar10_test.test_data.shape)

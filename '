@@ -32,9 +32,9 @@ u_cut = 40000
 pi = 0.49
 rho = 0.15
 
-# neg_ps = [0.6, 0.15, 0.03, 0.2, 0.02]
+neg_ps = [0.6, 0.15, 0.03, 0.2, 0.02]
 # neg_ps = [0.2, 0.2, 0.2, 0.2, 0.2]
-neg_ps = [1/3, 1/3, 1/3, 0, 0]
+# neg_ps = [1/3, 1/3, 1/3, 0, 0]
 
 non_pu_fraction = 0.8
 
@@ -55,7 +55,6 @@ learning_rate_dre = 1e-4
 learning_rate_cls = 1e-3
 weight_decay = 1e-4
 validation_momentum = 0.5
-beta = 0
 
 non_negative = False
 nn_threshold = 0
@@ -65,8 +64,9 @@ partial_n = False
 pu_partial_n = False
 partial_n_kai = False
 pu_partial_n_kai = False
-ls_prob_est = True
-pu_prob_est = False
+
+ls_prob_est = False
+pu_prob_est = True
 
 pu_plus_n = False
 minus_n = False
@@ -77,14 +77,13 @@ unbiased_pn = False
 iwpn = False
 pnu = False
 
-# sets_load_name = None
-sets_save_name = 'pickle/mnist/1000_1000_10000/135N/sets_135N_a.p'
 sets_load_name = None
+# sets_load_name = 'pickle/mnist/1000_1000_10000/imbN/sets_imbN.p'
+sets_save_name = None
 
-# dre_load_name = None
-dre_save_name = ('pickle/mnist/1000_1000_10000/135N/'
-                 + 'ls_prob_est_rho015_135N_a.p')
 dre_load_name = None
+# dre_load_name = 'pickle/1000_1000_10000/dre_model_rho015_farN.p'
+dre_save_name = None
 
 
 params = OrderedDict([
@@ -115,7 +114,6 @@ params = OrderedDict([
     ('learning_rate_cls', learning_rate_cls),
     ('weight_decay', weight_decay),
     ('validation_momentum', validation_momentum),
-    ('beta', beta),
     ('\nnon_negative', non_negative),
     ('nn_threshold', nn_threshold),
     ('nn_rate', nn_rate),
@@ -363,7 +361,7 @@ if ls_prob_est and dre_load_name is None:
     print('')
     model = Net(True).cuda() if args.cuda else Net(True)
     dre = training.PosteriorProbability(
-            model, pi=pi, rho=rho, beta=beta,
+            model, pi=pi, rho=rho,
             lr=learning_rate_dre, weight_decay=weight_decay)
     dre.train(p_set, sn_set, u_set, test_set_dre,
               p_batch_size, sn_batch_size, u_batch_size,

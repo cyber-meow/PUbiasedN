@@ -341,15 +341,11 @@ class PUClassifier3(Classifier_from3):
         self.prob_est = prob_est
         if prob_est:
             self.test = self.test_prob_est
+            self.validation = self.validation_prob_est
         super().__init__(model, *args, **kwargs)
 
-    def compute_loss(self, px, snx, ux, convex, validation=False):
-        if validation:
-            fpx = self.feed_in_batches(self.model, px)
-            fsnx = self.feed_in_batches(self.model, snx)
-            fux = self.feed_in_batches(self.model, ux)
-        else:
-            fpx, fsnx, fux = self.feed_together(self.model, px, snx, ux)
+    def compute_loss(self, px, snx, ux, convex):
+        fpx, fsnx, fux = self.feed_together(self.model, px, snx, ux)
         p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
         sn_loss = self.rho * torch.mean(self.basic_loss(fsnx, convex))
         n_loss = (torch.mean(self.basic_loss(-fux, convex))
@@ -357,11 +353,44 @@ class PUClassifier3(Classifier_from3):
                   - self.pi * torch.mean(self.basic_loss(-fpx, convex)))
         true_loss = p_loss + sn_loss + n_loss
         loss = true_loss
-        if not validation:
-            print(n_loss.item())
+        print(n_loss.item())
         if self.nn and n_loss < self.nn_threshold:
             loss = -n_loss * self.nn_rate
         return loss.cpu(), true_loss.cpu()
+
+    def average_loss(self, fx):
+        negative_logistic = nn.LogSigmoid()
+        logistic_loss = torch.mean(-negative_logistic(fx))
+        zero_one_loss = torch.mean((1-torch.sign(fx)/2))
+        return torch.cat([logistic_loss, zero_one_loss])
+
+    def validation_prob_est(self, p_val, sn_val, u_val):
+        fpx = self.feed_in_batches(self.model, p_val)
+        fsnx = self.feed_in_batches(self.model, sn_val)
+        fux = self.feed_in_batches(self.model, u_val)
+        ls_loss = (torch.mean(fux**2)
+                   - 2 * torch.mean(fpx) * self.pi
+                   - 2 * torch.mean(fsnx) * self.rho)
+        print('Ls Validation Loss:', ls_loss.cpu().item(), flush=True)
+        p_loss = self.pi * self.average_loss(fpx)
+        sn_loss = self.rho * self.average_loss(fsnx)
+        n_loss = (self.average_loss(-fux)
+                  - self.rho * self.average_loss(-fsnx)
+                  - self.pi * self.average_loss(-fpx))
+        logistic_loss = p_loss[0] + sn_loss[0] + n_loss[0]
+        print('Log Validation Loss:', logistic_loss.cpu().item(), flush=True)
+        zero_one_loss = p_loss[1] + sn_loss[1] + n_loss[1]
+        print('01 Validation Loss:', zero_one_loss.cpu().item(), flush=True)
+        if self.curr_accu_vloss is None:
+            self.curr_accu_vloss = ls_loss.cpu().item()
+        else:
+            self.curr_accu_vloss = (
+                self.curr_accu_vloss * self.validation_momentum
+                + ls_loss.cpu().item() * (1-self.validation_momentum))
+        if self.curr_accu_vloss < self.min_vloss:
+            self.min_vloss = self.curr_accu_vloss
+            self.final_model = deepcopy(self.model)
+        return ls_loss
 
     def test_prob_est(self, test_set, to_print=True):
         x = test_set.tensors[0]
@@ -651,9 +680,10 @@ class PUWeightedClassifier2(Classifier_from3):
 
 class PosteriorProbability(Training):
 
-    def __init__(self, model, pi=0.5, rho=0.1, *args, **kwargs):
+    def __init__(self, model, pi=0.5, rho=0.1, beta=1, *args, **kwargs):
         self.pi = pi
         self.rho = rho
+        self.beta = beta
         super().__init__(model, *args, **kwargs)
 
     def train(self, p_set, sn_set, u_set, test_set,
@@ -710,23 +740,52 @@ class PosteriorProbability(Training):
                 self.validation(p_validation, sn_validation, u_validation)
         return np.mean(np.array(losses))
 
-    def compute_loss(self, px, snx, ux, validation=False):
-        if validation:
-            fpx = self.feed_in_batches(self.model, px)
-            fsnx = self.feed_in_batches(self.model, snx)
-            fux = self.feed_in_batches(self.model, ux)
-        else:
-            fpx, fsnx, fux = self.feed_together(self.model, px, snx, ux)
+    def compute_loss(self, px, snx, ux):
+        fpx, fsnx, fux = self.feed_together(self.model, px, snx, ux)
         fpx_mean = torch.mean(fpx)
         fsnx_mean = torch.mean(fsnx)
         fux_mean = torch.mean(fux)
         fux2_mean = torch.mean(fux**2)
         loss = (fux2_mean - 2*fpx_mean*self.pi - 2*fsnx_mean*self.rho
-                + (fux_mean - self.pi - self.rho)**2)
+                + self.beta * (fux_mean - self.pi - self.rho)**2)
         print(fux2_mean.item(),
               fpx_mean.item()*self.pi + fsnx_mean.item()*self.rho,
               fux_mean.item(), loss.item())
         return loss.cpu(), loss.cpu()
+
+    def average_loss(self, fx):
+        negative_logistic = nn.LogSigmoid()
+        logistic_loss = torch.mean(-negative_logistic(fx))
+        zero_one_loss = torch.mean((1-torch.sign(fx)/2))
+        return torch.tensor([logistic_loss, zero_one_loss])
+
+    def validation(self, p_val, sn_val, u_val):
+        fpx = self.feed_in_batches(self.model, p_val)
+        fsnx = self.feed_in_batches(self.model, sn_val)
+        fux = self.feed_in_batches(self.model, u_val)
+        ls_loss = (torch.mean(fux**2)
+                   - 2 * torch.mean(fpx) * self.pi
+                   - 2 * torch.mean(fsnx) * self.rho)
+        print('Validation Ls Loss:', ls_loss.cpu().item(), flush=True)
+        p_loss = self.pi * self.average_loss(fpx)
+        sn_loss = self.rho * self.average_loss(fsnx)
+        n_loss = (self.average_loss(-fux)
+                  - self.rho * self.average_loss(-fsnx)
+                  - self.pi * self.average_loss(-fpx))
+        logistic_loss = p_loss[0] + sn_loss[0] + n_loss[0]
+        print('Validation Log Loss:', logistic_loss.cpu().item(), flush=True)
+        zero_one_loss = p_loss[1] + sn_loss[1] + n_loss[1]
+        print('Validation 01 Loss:', zero_one_loss.cpu().item(), flush=True)
+        if self.curr_accu_vloss is None:
+            self.curr_accu_vloss = ls_loss.cpu().item()
+        else:
+            self.curr_accu_vloss = (
+                self.curr_accu_vloss * self.validation_momentum
+                + ls_loss.cpu().item() * (1-self.validation_momentum))
+        if self.curr_accu_vloss < self.min_vloss:
+            self.min_vloss = self.curr_accu_vloss
+            self.final_model = deepcopy(self.model)
+        return ls_loss
 
     def test(self, test_set, to_print=True):
         x = test_set.tensors[0]
