@@ -72,7 +72,7 @@ def read_one_file(filename):
         if line.startswith('Epoch'):
             a = line.split()
             losses.append(float(a[4]))
-    return pers[:-1], va_pers, losses
+    return pers, va_pers, losses
 
 
 read_directory(sys.argv[1])

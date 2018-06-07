@@ -22,9 +22,10 @@ def read_directory(dir_name):
     names = ['partial_n', 'ls_partial_n', 'pu_est_partial_n', 'pu_partial_n',
              'pu_est_log_partial_n',
              'nnpu', 'sig_nnpu', 'pu+n', 'pu+-n', 'pu_then_pn',
-             'unbiased_pn', 'pn', 'iwpn', 'iwapn',
+             'unbiased_pn', 'pn', 'iwpn', 'iwapn', 'still_pn', 'always_pn',
              'pu_prob_est', 'pu_prob_sig_est',
-             'n2pu_prob_est', 'n2pu_prob_sig_est', 'ls_prob_est']
+             'n2pu_prob_est', 'n2pu_prob_sig_est', 'ls_prob_est',
+             'ls_cal', 'n2pu_cal']
 
     titles = ['test square error', 'test square error std',
               'test normalized square error',
@@ -56,15 +57,16 @@ def read_directory(dir_name):
             plt.title(titles[i])
             for lab in to_plot:
                 if plot_all:
-                    for i, curve in enumerate(to_plot[lab][i]):
-                        plt.plot(curve, label='{}_{}'.format(lab, i))
+                    for j, curve in enumerate(to_plot[lab][i]):
+                        plt.plot(curve, label='{}_{}'.format(lab, j))
                 else:
-                    m = np.mean(np.array(to_plot[lab][i]), axis=0)
-                    # m = scipy.ndimage.filters.gaussian_filter1d(m, 1)
-                    s = np.std(np.array(to_plot[lab][i]), axis=0)
-                    plt.plot(m, label=lab)
-                    plt.fill_between(
-                            np.arange(len(m)), m-s/2, m+s/2, alpha=0.5)
+                    if to_plot[lab][i] != []:
+                        m = np.mean(np.array(to_plot[lab][i]), axis=0)
+                        # m = scipy.ndimage.filters.gaussian_filter1d(m, 1)
+                        s = np.std(np.array(to_plot[lab][i]), axis=0)
+                        plt.plot(m, label=lab)
+                        plt.fill_between(
+                                np.arange(len(m)), m-s/2, m+s/2, alpha=0.5)
             plt.legend()
 
 
@@ -79,7 +81,8 @@ def read_one_file(filename):
         if line == '\n':
             errs, err_stds, n_errs, n_err_stds = [], [], [], []
             accs, aucs = [], []
-            losses, va_losses = [], []
+            losses, val_losses = [], []
+            val_ls_losses, val_log_losses, val_sig_losses = [], [], []
         if line.startswith('Test set: Error:'):
             a = line.split()
             errs.append(float(a[3]))
@@ -98,10 +101,10 @@ def read_one_file(filename):
             aucs.append(float(line[-8:-3]))
         if line.startswith('valid'):
             a = line.split()
-            if len(va_losses) <= 2:
-                va_losses.append(float(a[1]))
+            if len(val_losses) <= 2:
+                val_losses.append(float(a[1]))
             else:
-                va_losses.append(float(a[1])*1+va_losses[-1]*0)
+                val_losses.append(float(a[1])*1+val_losses[-1]*0)
         if line.startswith('Epoch'):
             a = line.split()
             losses.append(float(a[4]))

@@ -65,10 +65,6 @@ ls_prob_est = True
 pu_prob_est = False
 
 partial_n = False
-pu_partial_n = False
-partial_n_kai = False
-pu_partial_n_kai = False
-
 pu_plus_n = False
 minus_n = False
 pu_then_pn = False
@@ -123,10 +119,7 @@ params = OrderedDict([
     ('\nls_prob_est', ls_prob_est),
     ('pu_prob_est', pu_prob_est),
     ('\npartial_n', partial_n),
-    ('pu_partial_n', pu_partial_n),
-    ('partial_n_kai', partial_n_kai),
-    ('pu_partial_n_kai', pu_partial_n_kai),
-    ('\npu_plus_n', pu_plus_n),
+    ('pu_plus_n', pu_plus_n),
     ('minus_n', minus_n),
     ('pu_then_pn', pu_then_pn),
     ('\npu', pu),
@@ -205,6 +198,16 @@ def pick_u_data(data, labels, n):
     return data[selected_u]
 
 
+def posteriors(labels):
+    posteriors = torch.zeros(labels.size())
+    for i in range(10):
+        if i % 2 == 1:
+            posteriors[labels == i] = neg_ps[i//2] * rho * 10
+        else:
+            posteriors[labels == i] = 1
+    return posteriors
+
+
 if normalize:
     train_data = torch.zeros(mnist.train_data.size())
     for i, (image, _) in enumerate(mnist):
@@ -275,13 +278,6 @@ if sets_load_name is None:
     n_set = torch.utils.data.TensorDataset(
         pick_n_data(train_data, train_labels, n_num).unsqueeze(1))
 
-    # selected_u = np.random.choice(len(train_data), u_num, replace=False)
-    # u_set = torch.utils.data.TensorDataset(
-    #     train_data[selected_u].unsqueeze(1))
-    # u_set_labels = torch.utils.data.TensorDataset(
-    #     train_data[selected_u].unsqueeze(1),
-    #     train_labels[selected_u].unsqueeze(1))
-
     u_set = torch.utils.data.TensorDataset(
         pick_u_data(train_data, train_labels, u_num).unsqueeze(1))
 
@@ -309,14 +305,7 @@ if sets_load_name is not None:
         pickle.load(open(sets_load_name, 'rb'))
 
 
-test_posteriors = torch.zeros(test_labels.size())
-test_posteriors[test_labels % 2 == 0] = 1
-# test_posteriors[test_labels % 2 == 1] = -1
-test_posteriors[test_labels == 1] = neg_ps[0] * rho * 10
-test_posteriors[test_labels == 3] = neg_ps[1] * rho * 10
-test_posteriors[test_labels == 5] = neg_ps[2] * rho * 10
-test_posteriors[test_labels == 7] = neg_ps[3] * rho * 10
-test_posteriors[test_labels == 9] = neg_ps[4] * rho * 10
+test_posteriors = posteriors(test_labels)
 
 test_set_dre = torch.utils.data.TensorDataset(
     test_data.unsqueeze(1), test_posteriors.unsqueeze(1))
@@ -431,19 +420,6 @@ if partial_n:
               p_validation, sn_validation, u_validation,
               cls_training_epochs)
 
-if pu_partial_n:
-    print('')
-    model = Net().cuda() if args.cuda else Net()
-    cls = training.PUWeightedClassifier(
-            model, dre_model, pi=pi, rho=rho,
-            lr=learning_rate_cls, weight_decay=weight_decay,
-            weighted_fraction=non_pu_fraction,
-            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
-    cls.train(p_set, sn_set, u_set, test_set_cls,
-              p_batch_size, sn_batch_size, u_batch_size,
-              p_validation, sn_validation, u_validation,
-              cls_training_epochs)
-
 if iwpn:
     print('')
     model = Net().cuda() if args.cuda else Net()
@@ -457,43 +433,6 @@ if iwpn:
             lr=learning_rate_cls, weight_decay=weight_decay)
     cls.train(p_set, sn_set, test_set_cls, p_batch_size, sn_batch_size,
               p_validation, sn_validation, cls_training_epochs)
-
-if partial_n_kai or pu_partial_n_kai:
-    # print('')
-    # model = Net(True).cuda() if args.cuda else Net(True)
-    # dre = training.PosteriorProbability2(
-    #         model, pi=rho,
-    #         lr=learning_rate_dre, weight_decay=weight_decay)
-    # dre.train(sn_set, u_set, test_set_dre, sn_batch_size, u_batch_size,
-    #           sn_validation, u_validation, dre_training_epochs)
-    # pickle.dump(dre.model, open('dre_model.p', 'wb'))
-
-    dre_model = pickle.load(open('dre_model.p', 'rb'))
-
-    if partial_n_kai:
-        print('')
-        model = Net().cuda() if args.cuda else Net()
-        cls = training.WeightedClassifier2(
-                model, dre_model, pi=pi, rho=rho,
-                lr=learning_rate_cls, weight_decay=weight_decay,
-                nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
-        cls.train(p_set, sn_set, u_set, test_set_cls,
-                  p_batch_size, sn_batch_size, u_batch_size,
-                  p_validation, sn_validation, u_validation,
-                  cls_training_epochs)
-
-    if pu_partial_n_kai:
-        print('')
-        model = Net().cuda() if args.cuda else Net()
-        cls = training.PUWeightedClassifier2(
-                model, dre_model, pi=pi, rho=rho,
-                lr=learning_rate_cls, weight_decay=weight_decay,
-                weighted_fraction=non_pu_fraction,
-                nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
-        cls.train(p_set, sn_set, u_set, test_set_cls,
-                  p_batch_size, sn_batch_size, u_batch_size,
-                  p_validation, sn_validation, u_validation,
-                  cls_training_epochs)
 
 if pu_plus_n:
     print('')
