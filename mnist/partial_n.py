@@ -45,6 +45,7 @@ adjust_sn = True
 dre_training_epochs = 100
 cls_training_epochs = 100
 convex_epochs = 100
+pre_convex_epochs = 10
 
 p_batch_size = 100
 n_batch_size = 100
@@ -57,14 +58,16 @@ weight_decay = 1e-4
 validation_momentum = 0.5
 beta = 0
 
-non_negative = False
+non_negative = True
 nn_threshold = 0
 nn_rate = 1/3
 
-ls_prob_est = True
-pu_prob_est = False
+ls_prob_est = False
+pu_prob_est = True
 
-partial_n = False
+use_true_prob = False
+
+partial_n = True
 pu_plus_n = False
 minus_n = False
 pu_then_pn = False
@@ -74,13 +77,13 @@ unbiased_pn = False
 iwpn = False
 pnu = False
 
-# sets_save_name = None
-sets_save_name = 'pickle/mnist/1000_1000_10000/135N/sets_135N_a.p'
+sets_save_name = None
+# sets_save_name = 'pickle/mnist/1000_1000_10000/135N/sets_135N_a.p'
 sets_load_name = None
 
-# dre_save_name = None
-dre_save_name = ('pickle/mnist/1000_1000_10000/135N/'
-                 + 'ls_prob_est_rho02_135N_a.p')
+dre_save_name = None
+# dre_save_name = ('pickle/mnist/1000_1000_10000/135N/'
+#                  + 'ls_prob_est_rho02_135N_a.p')
 dre_load_name = None
 
 
@@ -104,6 +107,7 @@ params = OrderedDict([
     ('\ndre_training_epochs', dre_training_epochs),
     ('cls_training_epochs', cls_training_epochs),
     ('convex_epochs', convex_epochs),
+    ('pre_convex_epochs', pre_convex_epochs),
     ('\np_batch_size', p_batch_size),
     ('sn_batch_size', sn_batch_size),
     ('n_batch_size', n_batch_size),
@@ -161,10 +165,20 @@ mnist_test = torchvision.datasets.MNIST(
     './data/MNIST', train=False, download=True, transform=transform)
 
 
+def posteriors(labels):
+    posteriors = torch.zeros(labels.size())
+    for i in range(10):
+        if i % 2 == 1:
+            posteriors[labels == i] = neg_ps[i//2] * rho * 10
+        else:
+            posteriors[labels == i] = 1
+    return posteriors.unsqueeze(1)
+
+
 def pick_p_data(data, labels, n):
     p_idxs = np.argwhere(labels % 2 == 0).reshape(-1)
     selected_p = np.random.choice(p_idxs, n, replace=False)
-    return data[selected_p]
+    return data[selected_p], posteriors(labels[selected_p])
 
 
 def pick_sn_data(data, labels, n):
@@ -175,7 +189,8 @@ def pick_sn_data(data, labels, n):
         idxs = np.argwhere(labels == 2*i+1).reshape(-1)
         selected = np.random.choice(idxs, neg_nums[i], replace=False)
         selected_sn.extend(selected)
-    return data[np.array(selected_sn)]
+    selected_sn = np.array(selected_sn)
+    return data[selected_sn], posteriors(labels[selected_sn])
 
 
 def pick_n_data(data, labels, n2):
@@ -185,7 +200,7 @@ def pick_n_data(data, labels, n2):
     # selected_sn = np.random.choice(sn_idxs, n1, replace=False)
     selected_n = np.random.choice(n_idxs, n2, replace=False)
     # selected_n = np.r_[selected_n, selected_sn]
-    return data[np.random.permutation(selected_n)]
+    return data[selected_n], posteriors(labels[selected_n])
 
 
 def pick_u_data(data, labels, n):
@@ -195,17 +210,7 @@ def pick_u_data(data, labels, n):
     print('P in validation U data', up_num)
     print('N in validation U data', un_num)
     print('')
-    return data[selected_u]
-
-
-def posteriors(labels):
-    posteriors = torch.zeros(labels.size())
-    for i in range(10):
-        if i % 2 == 1:
-            posteriors[labels == i] = neg_ps[i//2] * rho * 10
-        else:
-            posteriors[labels == i] = 1
-    return posteriors
+    return data[selected_u], posteriors(labels[selected_u])
 
 
 if normalize:
@@ -214,6 +219,7 @@ if normalize:
         train_data[i] = image
 else:
     train_data = mnist.train_data
+train_data = train_data.unsqueeze(1)
 train_labels = mnist.train_labels
 
 if normalize:
@@ -222,6 +228,7 @@ if normalize:
         test_data[i] = image
 else:
     test_data = mnist_test.test_data
+test_data = test_data.unsqueeze(1)
 test_labels = mnist_test.test_labels
 
 
@@ -232,7 +239,7 @@ idxs = np.random.permutation(len(train_data))
 
 probs = pickle.load(open('prob_ac_pos.p', 'rb'))
 probs2 = -np.ones(len(train_data))
-probs2[np.array(train_labels) % 2 == 1] = probs
+probs2[np.array(train_labels).reshape(-1) % 2 == 1] = probs
 probs2 = probs2[idxs]
 probs = probs2[probs2 >= 0]
 
@@ -266,32 +273,25 @@ sn_valid_idxs = np.random.choice(
 
 
 if sets_load_name is None:
+
     p_set = torch.utils.data.TensorDataset(
-        pick_p_data(train_data, train_labels, p_num).unsqueeze(1))
+        *pick_p_data(train_data, train_labels, p_num))
 
+    # sn_set = torch.utils.data.TensorDataset(n_train_data[sn_train_idxs])
     sn_set = torch.utils.data.TensorDataset(
-        pick_sn_data(train_data, train_labels, sn_num).unsqueeze(1))
-
-    # sn_set = torch.utils.data.TensorDataset(
-    #     n_train_data[sn_train_idxs].unsqueeze(1))
+        *pick_sn_data(train_data, train_labels, sn_num))
 
     n_set = torch.utils.data.TensorDataset(
-        pick_n_data(train_data, train_labels, n_num).unsqueeze(1))
+        *pick_n_data(train_data, train_labels, n_num))
 
     u_set = torch.utils.data.TensorDataset(
-        pick_u_data(train_data, train_labels, u_num).unsqueeze(1))
+        *pick_u_data(train_data, train_labels, u_num))
 
-    p_validation = pick_p_data(
-        valid_data, valid_labels, pv_num).unsqueeze(1)
-
-    sn_validation = pick_sn_data(
-        valid_data, valid_labels, snv_num).unsqueeze(1)
-    # sn_validation = n_valid_data[sn_valid_idxs].unsqueeze(1)
-
-    n_validation = pick_n_data(
-        valid_data, valid_labels, nv_num).unsqueeze(1)
-
-    u_validation = pick_u_data(valid_data, valid_labels, uv_num).unsqueeze(1)
+    p_validation = pick_p_data(valid_data, valid_labels, pv_num)
+    # sn_validation = n_valid_data[sn_valid_idxs],
+    sn_validation = pick_sn_data(valid_data, valid_labels, snv_num)
+    n_validation = pick_n_data(valid_data, valid_labels, nv_num)
+    u_validation = pick_u_data(valid_data, valid_labels, uv_num)
 
     if sets_save_name is not None:
         pickle.dump(
@@ -307,23 +307,22 @@ if sets_load_name is not None:
 
 test_posteriors = posteriors(test_labels)
 
-test_set_dre = torch.utils.data.TensorDataset(
-    test_data.unsqueeze(1), test_posteriors.unsqueeze(1))
+test_set_dre = torch.utils.data.TensorDataset(test_data, test_posteriors)
 
 t_labels = torch.zeros(test_labels.size())
 t_labels[test_labels % 2 == 0] = 1
 t_labels[test_labels % 2 == 1] = -1
 
 test_set_cls = torch.utils.data.TensorDataset(
-    test_data.unsqueeze(1), t_labels.unsqueeze(1))
+    test_data, t_labels.unsqueeze(1))
 
 
 t_labels = torch.zeros(test_labels.size())
-t_labels[test_posteriors > 1/2] = 1
-t_labels[test_posteriors <= 1/2] = -1
+t_labels[test_posteriors.view(-1) > 1/2] = 1
+t_labels[test_posteriors.view(-1) <= 1/2] = -1
 
 test_set_pre_cls = torch.utils.data.TensorDataset(
-    test_data.unsqueeze(1), t_labels.unsqueeze(1))
+    test_data, t_labels.unsqueeze(1))
 
 
 class Net(nn.Module):
@@ -408,6 +407,9 @@ if dre_load_name is not None:
     # plt.hist(ux.detach().cpu().numpy())
     # plt.show()
 
+if use_true_prob:
+    dre_model = None
+
 if partial_n:
     print('')
     model = Net().cuda() if args.cuda else Net()
@@ -418,7 +420,7 @@ if partial_n:
     cls.train(p_set, sn_set, u_set, test_set_cls,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
-              cls_training_epochs)
+              cls_training_epochs, convex_epochs=convex_epochs)
 
 if iwpn:
     print('')
@@ -432,7 +434,8 @@ if iwpn:
             adjust_p=adjust_p, adjust_n=adjust_sn,
             lr=learning_rate_cls, weight_decay=weight_decay)
     cls.train(p_set, sn_set, test_set_cls, p_batch_size, sn_batch_size,
-              p_validation, sn_validation, cls_training_epochs)
+              p_validation, sn_validation,
+              cls_training_epochs, convex_epochs=convex_epochs)
 
 if pu_plus_n:
     print('')
@@ -445,7 +448,7 @@ if pu_plus_n:
     cls.train(p_set, sn_set, u_set, test_set_cls,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
-              cls_training_epochs)
+              cls_training_epochs, convex_epochs=convex_epochs)
 
 
 if pu_then_pn:
@@ -458,7 +461,7 @@ if pu_then_pn:
     cls.train(p_set, sn_set, u_set, test_set_pre_cls,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
-              cls_training_epochs)
+              cls_training_epochs, convex_epochs=pre_convex_epochs)
 
     print('')
     model = Net().cuda() if args.cuda else Net()
@@ -466,7 +469,8 @@ if pu_then_pn:
             model, pi=pi/(pi+rho), pu_model=cls.model,
             lr=learning_rate_cls, weight_decay=weight_decay)
     cls2.train(p_set, sn_set, test_set_cls, p_batch_size, sn_batch_size,
-               p_validation, sn_validation, cls_training_epochs)
+               p_validation, sn_validation,
+               cls_training_epochs, convex_epochs=convex_epochs)
 
 
 if pu:
@@ -476,7 +480,8 @@ if pu:
             model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay,
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
     cls.train(p_set, u_set, test_set_cls, p_batch_size, u_batch_size,
-              p_validation, u_validation, cls_training_epochs)
+              p_validation, u_validation,
+              cls_training_epochs, convex_epochs=convex_epochs)
 
 if unbiased_pn:
     print('')
@@ -484,7 +489,8 @@ if unbiased_pn:
     cls = training.PNClassifier(
             model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay)
     cls.train(p_set, n_set, test_set_cls, p_batch_size, n_batch_size,
-              p_validation, n_validation, cls_training_epochs)
+              p_validation, n_validation,
+              cls_training_epochs, convex_epochs=convex_epochs)
 
 if pnu:
     print('')
@@ -496,4 +502,5 @@ if pnu:
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
     cls.train(p_set, n_set, u_set, test_set_cls,
               p_batch_size, n_batch_size, u_batch_size,
-              p_validation, n_validation, u_validation, cls_training_epochs)
+              p_validation, n_validation, u_validation,
+              cls_training_epochs, convex_epochs=convex_epochs)

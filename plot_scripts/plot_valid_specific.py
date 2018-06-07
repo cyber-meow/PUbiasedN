@@ -19,13 +19,14 @@ def read_directory(dir_name):
 
     plot_all = False
     to_plot = {}
-    names = ['partial_n', 'ls_partial_n', 'pu_est_partial_n', 'pu_partial_n',
-             'pu_est_log_partial_n',
-             'nnpu', 'sig_nnpu', 'pu+n', 'pu+-n', 'pu_then_pn',
-             'unbiased_pn', 'pn', 'iwpn', 'iwapn', 'still_pn', 'always_pn',
-             'pu_prob_est', 'pu_prob_sig_est',
+    names = ['partial_n', 'ls_partial_n', 'pu_est_partial_n',
+             'ls05_partial_n', 'gradual_eta', 'ls_gradual_eta',
+             'nnpu', 'log_nnpu', 'pu+n', 'pu+-n', 'pu_then_pn',
+             'unbiased_pn', 'pn', 'iwpn',
+             'pu_prob_est', 'pu_prob_sig_est', 'sig_partial_n',
              'n2pu_prob_est', 'n2pu_prob_sig_est', 'ls_prob_est',
-             'ls_cal', 'n2pu_cal']
+             'ls_cal', 'n2pu_cal', 'amsgrad_pn', 'perfect_partial_n',
+             'perfect03_partial_n', 'perfect05_partial_n']
 
     titles = ['test square error', 'test square error std',
               'test normalized square error',
@@ -48,7 +49,7 @@ def read_directory(dir_name):
                                 and not (i == 5 and name == 'pu_then_pn')):
                             plot_or_not[i] = True
                             to_plot[name][i].append(curves[i])
-    for i in [2, 3]:
+    for i in [2, 3, 5]:
         plot_or_not[i] = False
 
     for i in range(11):

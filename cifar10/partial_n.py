@@ -32,13 +32,14 @@ neg_ps = [0, 1/3, 0, 1/3, 0, 1/3]
 
 non_pu_fraction = 0.6
 
-sep_value = 0.3
+sep_value = 0.5
 adjust_p = False
 adjust_sn = True
 
 dre_training_epochs = 200
 cls_training_epochs = 200
 convex_epochs = 200
+pre_convex_epochs = 20
 
 p_batch_size = 100
 n_batch_size = 100
@@ -51,14 +52,14 @@ weight_decay = 1e-4
 validation_momentum = 0.5
 beta = 0
 
-non_negative = False
+non_negative = True
 nn_threshold = 0
 nn_rate = 1/3
 
 ls_prob_est = False
 pu_prob_est = False
 
-use_true_post = True
+use_true_post = False
 
 partial_n = True
 pu_then_pn = False
@@ -69,12 +70,12 @@ iwpn = False
 pnu = False
 
 sets_save_name = None
-# sets_load_name = 'pickle/cifar10/1000_1000_10000/sets_357N_a.p'
-sets_load_name = None
+sets_load_name = 'pickle/cifar10/1000_1000_10000/sets_357N_a.p'
+# sets_load_name = None
 
 dre_save_name = None
-# dre_load_name = 'pickle/cifar10/1000_1000_10000/ls_prob_est_rho02_357N_a.p'
-dre_load_name = None
+dre_load_name = 'pickle/cifar10/1000_1000_10000/n2pu_prob_est_rho02_357N_a.p'
+# dre_load_name = None
 
 
 params = OrderedDict([
@@ -96,6 +97,7 @@ params = OrderedDict([
     ('\ndre_training_epochs', dre_training_epochs),
     ('cls_training_epochs', cls_training_epochs),
     ('convex_epochs', convex_epochs),
+    ('pre_convex_epochs', pre_convex_epochs),
     ('\np_batch_size', p_batch_size),
     ('sn_batch_size', sn_batch_size),
     ('n_batch_size', n_batch_size),
@@ -154,11 +156,21 @@ cifar10_test = torchvision.datasets.CIFAR10(
     './data/CIFAR10', train=False, download=True, transform=transform)
 
 
+def posteriors(labels):
+    posteriors = torch.zeros(labels.size())
+    for i in range(10):
+        if 2 <= i and i <= 7:
+            posteriors[labels == i] = neg_ps[i-2] * rho * 10
+        else:
+            posteriors[labels == i] = 1
+    return posteriors.unsqueeze(1)
+
+
 def pick_p_data(data, labels, n):
     p_idxs = np.argwhere(
         np.logical_or(labels < 2, labels > 7)).reshape(-1)
     selected_p = np.random.choice(p_idxs, n, replace=False)
-    return data[selected_p], labels[selected_p]
+    return [data[selected_p], labels[selected_p]]
 
 
 def pick_sn_data(data, labels, n):
@@ -170,33 +182,24 @@ def pick_sn_data(data, labels, n):
         selected = np.random.choice(idxs, neg_nums[i], replace=False)
         selected_sn.extend(selected)
     selected_sn = np.array(selected_sn)
-    return data[selected_sn], labels[selected_sn]
+    return data[selected_sn], posteriors(labels[selected_sn])
 
 
 def pick_n_data(data, labels, n):
     n_idxs = np.argwhere(
         np.logical_and(labels >= 2, labels <= 7)).reshape(-1)
     selected_n = np.random.choice(n_idxs, n, replace=False)
-    return data[selected_n], labels[selected_n]
+    return data[selected_n], posteriors(labels[selected_n])
 
 
 def pick_u_data(data, labels, n):
     selected_u = np.random.choice(len(data), n, replace=False)
-    return data[selected_u], labels[selected_u]
-
-
-def posteriors(labels):
-    posteriors = torch.zeros(labels.size())
-    for i in range(10):
-        if 2 <= i and i <= 7:
-            posteriors[labels == i] = neg_ps[i-2] * rho * 10
-        else:
-            posteriors[labels == i] = 1
-    return posteriors
+    return data[selected_u], posteriors(labels[selected_u])
 
 
 train_data = torch.zeros(cifar10.train_data.shape)
 train_data = train_data.permute(0, 3, 1, 2)
+# must use one dimensional vector
 train_labels = torch.tensor(cifar10.train_labels)
 
 for i, (image, _) in enumerate(cifar10):
@@ -212,17 +215,17 @@ train_labels = train_labels[idxs][:u_cut]
 
 if sets_load_name is None:
 
-    p_data, p_labels = pick_p_data(train_data, train_labels, p_num)
-    p_set = torch.utils.data.TensorDataset(p_data, posteriors(p_labels))
+    p_set = torch.utils.data.TensorDataset(
+        *pick_p_data(train_data, train_labels, p_num))
 
-    sn_data, sn_labels = pick_sn_data(train_data, train_labels, sn_num)
-    sn_set = torch.utils.data.TensorDataset(sn_data, posteriors(sn_labels))
+    sn_set = torch.utils.data.TensorDataset(
+        *pick_sn_data(train_data, train_labels, sn_num))
 
-    n_data, n_labels = pick_n_data(train_data, train_labels, n_num)
-    n_set = torch.utils.data.TensorDataset(sn_data, posteriors(n_labels))
+    n_set = torch.utils.data.TensorDataset(
+        *pick_n_data(train_data, train_labels, n_num))
 
-    u_data, u_labels = pick_u_data(train_data, train_labels, n_num)
-    u_set = torch.utils.data.TensorDataset(sn_data, posteriors(u_labels))
+    u_set = torch.utils.data.TensorDataset(
+        *pick_u_data(train_data, train_labels, u_num))
 
     p_validation = pick_p_data(valid_data, valid_labels, pv_num)
     sn_validation = pick_sn_data(valid_data, valid_labels, snv_num)
@@ -249,12 +252,11 @@ for i, (image, _) in enumerate(cifar10_test):
     test_data[i] = image
 test_posteriors = posteriors(test_labels)
 
-test_set_dre = torch.utils.data.TensorDataset(
-    test_data, test_posteriors.unsqueeze(1))
+test_set_dre = torch.utils.data.TensorDataset(test_data, test_posteriors)
 
 t_labels = torch.zeros(test_labels.size())
-t_labels[test_posteriors > 1/2] = 1
-t_labels[test_posteriors <= 1/2] = -1
+t_labels[test_posteriors.view(-1) > 1/2] = 1
+t_labels[test_posteriors.view(-1) <= 1/2] = -1
 
 test_set_pre_cls = torch.utils.data.TensorDataset(
     test_data, t_labels.unsqueeze(1))
@@ -283,7 +285,8 @@ if unbiased_pn:
     cls = training.PNClassifier(
             model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay)
     cls.train(p_set, n_set, test_set_cls, p_batch_size, n_batch_size,
-              p_validation, n_validation, cls_training_epochs)
+              p_validation, n_validation,
+              cls_training_epochs, convex_epochs=convex_epochs)
 
 if pnu:
     print('')
@@ -296,7 +299,7 @@ if pnu:
     cls.train(p_set, n_set, u_set, test_set_cls,
               p_batch_size, n_batch_size, u_batch_size,
               p_validation, n_validation, u_validation,
-              cls_training_epochs)
+              cls_training_epochs, convex_epochs=convex_epochs)
 
 if ls_prob_est and dre_load_name is None:
     print('')
@@ -367,7 +370,7 @@ if pu_then_pn:
     cls.train(p_set, sn_set, u_set, test_set_pre_cls,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
-              cls_training_epochs)
+              cls_training_epochs, convex_epochs=pre_convex_epochs)
 
     print('')
     model = PreActResNet18().cuda() if args.cuda else PreActResNet18()
@@ -375,4 +378,5 @@ if pu_then_pn:
             model, pi=pi/(pi+rho), pu_model=cls.model,
             lr=learning_rate_cls, weight_decay=weight_decay)
     cls2.train(p_set, sn_set, test_set_cls, p_batch_size, sn_batch_size,
-               p_validation, sn_validation, cls_training_epochs)
+               p_validation, sn_validation,
+               cls_training_epochs, convex_epochs=convex_epochs)
