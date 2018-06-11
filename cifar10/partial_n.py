@@ -10,7 +10,7 @@ import torchvision.transforms as transforms
 
 import training
 import settings
-from nets import PreActResNet18
+from cifar10.nets import PreActResNet18
 
 
 p_num = 1000
@@ -25,14 +25,14 @@ uv_num = 1000
 
 u_cut = 40000
 
-pi = 0.49
+pi = 0.4
 rho = 0.2
 
 neg_ps = [0, 1/3, 0, 1/3, 0, 1/3]
 
 non_pu_fraction = 0.6
 
-sep_value = 0.5
+sep_value = 0.3
 adjust_p = False
 adjust_sn = True
 
@@ -56,26 +56,31 @@ non_negative = True
 nn_threshold = 0
 nn_rate = 1/3
 
-ls_prob_est = False
+ls_prob_est = True
 pu_prob_est = False
 
 use_true_post = False
 
-partial_n = True
+partial_n = False
+hard_label = False
+sampling = False
+
+iwpn = False
+three_class = False
+prob_pred = False
 pu_then_pn = False
 
 pu = False
 unbiased_pn = False
-iwpn = False
 pnu = False
 
 sets_save_name = None
-sets_load_name = 'pickle/cifar10/1000_1000_10000/sets_357N_a.p'
-# sets_load_name = None
+sets_save_name = 'pickle/cifar10/1000_1000_10000/sets_357N_a.p'
+sets_load_name = None
 
 dre_save_name = None
-dre_load_name = 'pickle/cifar10/1000_1000_10000/n2pu_prob_est_rho02_357N_a.p'
-# dre_load_name = None
+dre_save_name = 'pickle/cifar10/1000_1000_10000/ls_prob_est_rho02_357N_a.p'
+dre_load_name = None
 
 
 params = OrderedDict([
@@ -114,10 +119,14 @@ params = OrderedDict([
     ('pu_prob_est', pu_prob_est),
     ('use_true_post', use_true_post),
     ('\npartial_n', partial_n),
+    ('hard_label', hard_label),
+    ('sampling', sampling),
+    ('\niwpn', iwpn),
+    ('three_class', three_class),
+    ('prob_pred', prob_pred),
     ('pu_then_pn', pu_then_pn),
     ('\npu', pu),
     ('unbiased_pn', unbiased_pn),
-    ('iwpn', iwpn),
     ('pnu', pnu),
     ('\nsets_save_name', sets_save_name),
     ('sets_load_name', sets_load_name),
@@ -252,8 +261,6 @@ for i, (image, _) in enumerate(cifar10_test):
     test_data[i] = image
 test_posteriors = posteriors(test_labels)
 
-test_set_dre = torch.utils.data.TensorDataset(test_data, test_posteriors)
-
 t_labels = torch.zeros(test_labels.size())
 t_labels[test_posteriors.view(-1) > 1/2] = 1
 t_labels[test_posteriors.view(-1) <= 1/2] = -1
@@ -265,41 +272,9 @@ test_labels[test_labels < 2] = 1
 test_labels[test_labels > 7] = 1
 test_labels[test_labels != 1] = -1
 
-test_set_cls = torch.utils.data.TensorDataset(
-    test_data, test_labels.unsqueeze(1))
+test_set = torch.utils.data.TensorDataset(
+    test_data, test_labels.unsqueeze(1).float(), test_posteriors)
 
-
-if pu:
-    print('')
-    model = PreActResNet18().cuda() if args.cuda else PreActResNet18()
-    cls = training.PUClassifier(
-            model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay,
-            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
-    cls.train(p_set, u_set, test_set_cls, p_batch_size, u_batch_size,
-              p_validation, u_validation,
-              cls_training_epochs, convex_epochs=convex_epochs)
-
-if unbiased_pn:
-    print('')
-    model = PreActResNet18().cuda() if args.cuda else PreActResNet18()
-    cls = training.PNClassifier(
-            model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay)
-    cls.train(p_set, n_set, test_set_cls, p_batch_size, n_batch_size,
-              p_validation, n_validation,
-              cls_training_epochs, convex_epochs=convex_epochs)
-
-if pnu:
-    print('')
-    model = PreActResNet18().cuda() if args.cuda else PreActResNet18()
-    cls = training.PNUClassifier(
-            model, pi=pi,
-            lr=learning_rate_cls, weight_decay=weight_decay,
-            pn_fraction=non_pu_fraction,
-            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
-    cls.train(p_set, n_set, u_set, test_set_cls,
-              p_batch_size, n_batch_size, u_batch_size,
-              p_validation, n_validation, u_validation,
-              cls_training_epochs, convex_epochs=convex_epochs)
 
 if ls_prob_est and dre_load_name is None:
     print('')
@@ -307,7 +282,7 @@ if ls_prob_est and dre_load_name is None:
     dre = training.PosteriorProbability(
             model, pi=pi, rho=rho, beta=beta,
             lr=learning_rate_dre, weight_decay=weight_decay)
-    dre.train(p_set, sn_set, u_set, test_set_dre,
+    dre.train(p_set, sn_set, u_set, test_set,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
               dre_training_epochs)
@@ -323,7 +298,7 @@ if pu_prob_est and dre_load_name is None:
             lr=learning_rate_cls, weight_decay=weight_decay,
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
             prob_est=True)
-    dre.train(p_set, sn_set, u_set, test_set_dre,
+    dre.train(p_set, sn_set, u_set, test_set,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
               cls_training_epochs, convex_epochs=convex_epochs)
@@ -342,9 +317,21 @@ if partial_n:
     model = PreActResNet18().cuda() if args.cuda else PreActResNet18()
     cls = training.WeightedClassifier(
             model, dre_model, pi=pi, rho=rho,
-            sep_value=sep_value, adjust_p=adjust_p, adjust_sn=adjust_sn,
+            sep_value=sep_value,
+            adjust_p=adjust_p, adjust_sn=adjust_sn, hard_label=hard_label,
             lr=learning_rate_cls, weight_decay=weight_decay)
-    cls.train(p_set, sn_set, u_set, test_set_cls,
+    cls.train(p_set, sn_set, u_set, test_set,
+              p_batch_size, sn_batch_size, u_batch_size,
+              p_validation, sn_validation, u_validation,
+              cls_training_epochs, convex_epochs=convex_epochs)
+
+if sampling:
+    print('')
+    model = PreActResNet18().cuda() if args.cuda else PreActResNet18()
+    cls = training.SamplingClassifier(
+            model, dre_model, pi=pi, rho=rho,
+            lr=learning_rate_cls, weight_decay=weight_decay)
+    cls.train(p_set, sn_set, u_set, test_set,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
               cls_training_epochs, convex_epochs=convex_epochs)
@@ -356,7 +343,7 @@ if iwpn:
             model, pi=pi/(pi+rho), pp_model=dre_model,
             adjust_p=adjust_p, adjust_n=adjust_sn,
             lr=learning_rate_cls, weight_decay=weight_decay)
-    cls.train(p_set, sn_set, test_set_cls, p_batch_size, sn_batch_size,
+    cls.train(p_set, sn_set, test_set, p_batch_size, sn_batch_size,
               p_validation, sn_validation,
               cls_training_epochs, convex_epochs=convex_epochs)
 
@@ -377,6 +364,51 @@ if pu_then_pn:
     cls2 = training.PNClassifier(
             model, pi=pi/(pi+rho), pu_model=cls.model,
             lr=learning_rate_cls, weight_decay=weight_decay)
-    cls2.train(p_set, sn_set, test_set_cls, p_batch_size, sn_batch_size,
+    cls2.train(p_set, sn_set, test_set, p_batch_size, sn_batch_size,
                p_validation, sn_validation,
                cls_training_epochs, convex_epochs=convex_epochs)
+
+if three_class:
+    print('')
+    model = (PreActResNet18(num_classes=3).cuda()
+             if args.cuda
+             else PreActResNet18(num_classes=3))
+    cls = training.ThreeClassifier(
+            model, pi=pi, rho=rho, prob_pred=prob_pred,
+            lr=learning_rate_cls, weight_decay=weight_decay,
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
+    cls.train(p_set, sn_set, u_set, test_set,
+              p_batch_size, sn_batch_size, u_batch_size,
+              p_validation, sn_validation, u_validation, cls_training_epochs)
+
+if pu:
+    print('')
+    model = PreActResNet18().cuda() if args.cuda else PreActResNet18()
+    cls = training.PUClassifier(
+            model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay,
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
+    cls.train(p_set, u_set, test_set, p_batch_size, u_batch_size,
+              p_validation, u_validation,
+              cls_training_epochs, convex_epochs=convex_epochs)
+
+if unbiased_pn:
+    print('')
+    model = PreActResNet18().cuda() if args.cuda else PreActResNet18()
+    cls = training.PNClassifier(
+            model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay)
+    cls.train(p_set, n_set, test_set, p_batch_size, n_batch_size,
+              p_validation, n_validation,
+              cls_training_epochs, convex_epochs=convex_epochs)
+
+if pnu:
+    print('')
+    model = PreActResNet18().cuda() if args.cuda else PreActResNet18()
+    cls = training.PNUClassifier(
+            model, pi=pi,
+            lr=learning_rate_cls, weight_decay=weight_decay,
+            pn_fraction=non_pu_fraction,
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
+    cls.train(p_set, n_set, u_set, test_set,
+              p_batch_size, n_batch_size, u_batch_size,
+              p_validation, n_validation, u_validation,
+              cls_training_epochs, convex_epochs=convex_epochs)

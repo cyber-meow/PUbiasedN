@@ -21,20 +21,23 @@ def read_directory(dir_name):
     to_plot = {}
     names = ['partial_n', 'ls_partial_n', 'pu_est_partial_n',
              'ls05_partial_n', 'gradual_eta', 'ls_gradual_eta',
-             'nnpu', 'log_nnpu', 'pu+n', 'pu+-n', 'pu_then_pn',
+             'perfect_partial_n', 'identify_n', 'rho0', 'rho-0',
+             'hard_label', 'sampling', 'p_some_u_plus_n', 'pu_plus_n',
+             'perfect03_partial_n', 'perfect05_partial_n',
+             'nnpu', 'nn-pu', 'log_nnpu', 'pu+n', 'pu+-n', 'pu_then_pn',
+             'three_class_prob', 'three_class_max',
              'unbiased_pn', 'pn', 'iwpn',
              'pu_prob_est', 'pu_prob_sig_est', 'sig_partial_n',
              'n2pu_prob_est', 'n2pu_prob_sig_est', 'ls_prob_est',
-             'ls_cal', 'n2pu_cal', 'amsgrad_pn', 'perfect_partial_n',
-             'perfect03_partial_n', 'perfect05_partial_n']
+             'ls_cal', 'n2pu_cal']
 
     titles = ['test square error', 'test square error std',
               'test normalized square error',
               'test normalized square error std',
-              'test accuracy', 'test auc score',
+              'test accuracy', 'test auc score', 'test f1 score',
               'training loss', 'validation loss', 'validation ls loss',
               'validation logistic loss', 'validation sigmoid loss']
-    plot_or_not = [False for _ in range(11)]
+    plot_or_not = [False for _ in range(12)]
 
     for f in listdir(dir_name):
         if f != 'all' and isfile(join(dir_name, f)):
@@ -44,15 +47,15 @@ def read_directory(dir_name):
                 if f.startswith('{}_{}'.format(dataset, name)):
                     if name not in to_plot:
                         to_plot[name] = [[] for _ in range(11)]
-                    for i in range(11):
+                    for i in range(12):
                         if (curves[i] != []
                                 and not (i == 5 and name == 'pu_then_pn')):
                             plot_or_not[i] = True
                             to_plot[name][i].append(curves[i])
-    for i in [2, 3, 5]:
+    for i in [2, 3]:
         plot_or_not[i] = False
 
-    for i in range(11):
+    for i in range(12):
         if plot_or_not[i]:
             plt.figure()
             plt.title(titles[i])
@@ -75,7 +78,7 @@ def read_one_file(filename):
     with open(filename) as f:
         content = f.readlines()
     errs, err_stds, n_errs, n_err_stds = [], [], [], []
-    accs, aucs = [], []
+    accs, aucs, f1s = [], [], []
     losses, val_losses = [], []
     val_ls_losses, val_log_losses, val_sig_losses = [], [], []
     for i, line in enumerate(content):
@@ -97,9 +100,17 @@ def read_one_file(filename):
             a = line.split()
             n_err_stds.append(float(a[5]))
         if line.startswith('Test set: Accuracy:'):
-            accs.append(float(line[-8:-3]))
+            try:
+                accs.append(float(line[-8:-3]))
+            except:
+                accs.append(float(line[-7:-3]))
         if line.startswith('Test set: Auc Score:'):
             aucs.append(float(line[-8:-3]))
+        if line.startswith('Test set: F1 Score:'):
+            try:
+                f1s.append(float(line[-8:-3]))
+            except:
+                f1s.append(float(line[-7:-3]))
         if line.startswith('valid'):
             a = line.split()
             if len(val_losses) <= 2:
@@ -129,7 +140,7 @@ def read_one_file(filename):
             a = line.split()
             val_sig_losses.append(float(a[3]))
     return (errs, err_stds, n_errs[2:], n_err_stds[2:],
-            accs, aucs, losses, val_losses,
+            accs, aucs, f1s, losses, val_losses,
             val_ls_losses, val_log_losses, val_sig_losses)
 
 

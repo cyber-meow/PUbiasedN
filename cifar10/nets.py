@@ -106,8 +106,10 @@ class PreActResNet(nn.Module):
         return out
 
 
-def PreActResNet18(sigmoid_output=False):
-    return PreActResNet(PreActBlock, [2, 2, 2, 2],
+def PreActResNet18(num_classes=1, sigmoid_output=False):
+    return PreActResNet(PreActBlock,
+                        [2, 2, 2, 2],
+                        num_classes=num_classes,
                         sigmoid_output=sigmoid_output)
 
 

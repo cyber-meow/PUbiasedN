@@ -30,13 +30,15 @@ uv_num = 1000
 u_cut = 40000
 
 pi = 0.49
-rho = 0.2
+# pi = 0.097
+rho = 0.15
 
-# neg_ps = [0.6, 0.15, 0.03, 0.2, 0.02]
+neg_ps = [0.6, 0.15, 0.03, 0.2, 0.02]
 # neg_ps = [0.2, 0.2, 0.2, 0.2, 0.2]
-neg_ps = [1/3, 1/3, 1/3, 0, 0]
+# neg_ps = [1/3, 1/3, 1/3, 0, 0]
+# neg_ps = [1/6, 1/6, 1/6, 1/6, 0, 1/6, 1/6, 0, 0, 0]
 
-non_pu_fraction = 0.8
+non_pu_fraction = 0.7
 
 sep_value = 0.3
 adjust_p = False
@@ -44,7 +46,8 @@ adjust_sn = True
 
 dre_training_epochs = 100
 cls_training_epochs = 100
-convex_epochs = 100
+pn_epochs = 40
+convex_epochs = 50
 pre_convex_epochs = 10
 
 p_batch_size = 100
@@ -63,27 +66,34 @@ nn_threshold = 0
 nn_rate = 1/3
 
 ls_prob_est = False
-pu_prob_est = True
+pu_prob_est = False
 
 use_true_prob = False
 
-partial_n = True
+partial_n = False
+hard_label = True
+sampling = False
+p_some_u_plus_n = True
+
 pu_plus_n = False
 minus_n = False
+
+iwpn = False
+three_class = False
+prob_pred = False
 pu_then_pn = False
 
 pu = False
 unbiased_pn = False
-iwpn = False
 pnu = False
 
 sets_save_name = None
-# sets_save_name = 'pickle/mnist/1000_1000_10000/135N/sets_135N_a.p'
+# sets_load_name = 'pickle/mnist/1000_1000_10000/imbN/sets_imbN_a.p'
 sets_load_name = None
 
 dre_save_name = None
-# dre_save_name = ('pickle/mnist/1000_1000_10000/135N/'
-#                  + 'ls_prob_est_rho02_135N_a.p')
+# dre_load_name = ('pickle/mnist/1000_1000_10000/imbN/'
+#                  + 'ls_prob_est_rho015_imbN_a.p')
 dre_load_name = None
 
 
@@ -106,6 +116,7 @@ params = OrderedDict([
     ('adjust_sn', adjust_sn),
     ('\ndre_training_epochs', dre_training_epochs),
     ('cls_training_epochs', cls_training_epochs),
+    ('pn_epochs', pn_epochs),
     ('convex_epochs', convex_epochs),
     ('pre_convex_epochs', pre_convex_epochs),
     ('\np_batch_size', p_batch_size),
@@ -122,13 +133,19 @@ params = OrderedDict([
     ('nn_rate', nn_rate),
     ('\nls_prob_est', ls_prob_est),
     ('pu_prob_est', pu_prob_est),
+    ('use_true_prob', use_true_prob),
     ('\npartial_n', partial_n),
-    ('pu_plus_n', pu_plus_n),
+    ('hard_label', hard_label),
+    ('sampling', sampling),
+    ('p_some_u_plus_n', p_some_u_plus_n),
+    ('\npu_plus_n', pu_plus_n),
     ('minus_n', minus_n),
+    ('\niwpn', iwpn),
+    ('three_class', three_class),
+    ('prob_pred', prob_pred),
     ('pu_then_pn', pu_then_pn),
     ('\npu', pu),
     ('unbiased_pn', unbiased_pn),
-    ('iwpn', iwpn),
     ('pnu', pnu),
     ('\nsets_save_name', sets_save_name),
     ('sets_load_name', sets_load_name),
@@ -168,15 +185,18 @@ mnist_test = torchvision.datasets.MNIST(
 def posteriors(labels):
     posteriors = torch.zeros(labels.size())
     for i in range(10):
+        # posteriors[labels == i] = neg_ps[i] * rho * 10
         if i % 2 == 1:
             posteriors[labels == i] = neg_ps[i//2] * rho * 10
         else:
             posteriors[labels == i] = 1
+    # posteriors[labels == 4] = 1
     return posteriors.unsqueeze(1)
 
 
 def pick_p_data(data, labels, n):
     p_idxs = np.argwhere(labels % 2 == 0).reshape(-1)
+    # p_idxs = np.argwhere(labels == 4).reshape(-1)
     selected_p = np.random.choice(p_idxs, n, replace=False)
     return data[selected_p], posteriors(labels[selected_p])
 
@@ -185,6 +205,8 @@ def pick_sn_data(data, labels, n):
     neg_nums = np.random.multinomial(n, neg_ps)
     print('numbers in each negative subclass', neg_nums)
     selected_sn = []
+    # for i in range(10):
+    #     idxs = np.argwhere(labels == i).reshape(-1)
     for i in range(5):
         idxs = np.argwhere(labels == 2*i+1).reshape(-1)
         selected = np.random.choice(idxs, neg_nums[i], replace=False)
@@ -194,12 +216,9 @@ def pick_sn_data(data, labels, n):
 
 
 def pick_n_data(data, labels, n2):
-    # sn_idxs = np.argwhere(
-    #     np.logical_and(labels % 2 == 1, labels < 6)).reshape(-1)
     n_idxs = np.argwhere(labels % 2 == 1).reshape(-1)
-    # selected_sn = np.random.choice(sn_idxs, n1, replace=False)
+    # n_idxs = np.argwhere(labels != 4).reshape(-1)
     selected_n = np.random.choice(n_idxs, n2, replace=False)
-    # selected_n = np.r_[selected_n, selected_sn]
     return data[selected_n], posteriors(labels[selected_n])
 
 
@@ -305,16 +324,16 @@ if sets_load_name is not None:
         pickle.load(open(sets_load_name, 'rb'))
 
 
-test_posteriors = posteriors(test_labels)
-
-test_set_dre = torch.utils.data.TensorDataset(test_data, test_posteriors)
-
 t_labels = torch.zeros(test_labels.size())
 t_labels[test_labels % 2 == 0] = 1
 t_labels[test_labels % 2 == 1] = -1
+# t_labels[test_labels == 4] = 1
+# t_labels[test_labels != 4] = -1
 
-test_set_cls = torch.utils.data.TensorDataset(
-    test_data, t_labels.unsqueeze(1))
+test_posteriors = posteriors(test_labels)
+
+test_set = torch.utils.data.TensorDataset(
+    test_data, t_labels.unsqueeze(1), test_posteriors)
 
 
 t_labels = torch.zeros(test_labels.size())
@@ -327,15 +346,14 @@ test_set_pre_cls = torch.utils.data.TensorDataset(
 
 class Net(nn.Module):
 
-    def __init__(self, sigmoid_output=False):
+    def __init__(self, num_classes=1):
         super(Net, self).__init__()
-        self.sigmoid_output = sigmoid_output
         self.conv1 = nn.Conv2d(1, 5, 5, 1)
         self.bn1 = nn.BatchNorm2d(5)
         self.conv2 = nn.Conv2d(5, 10, 5, 1)
         self.bn2 = nn.BatchNorm2d(10)
         self.fc1 = nn.Linear(4*4*10, 40)
-        self.fc2 = nn.Linear(40, 1)
+        self.fc2 = nn.Linear(40, num_classes)
 
     def forward(self, x):
         # x = F.relu(self.bn1(self.conv1(x)))
@@ -348,8 +366,6 @@ class Net(nn.Module):
         x = F.relu(self.fc1(x))
         x = F.dropout(x, training=self.training)
         x = self.fc2(x)
-        if self.sigmoid_output:
-            x = F.sigmoid(x)
         return x
 
 
@@ -359,7 +375,7 @@ if ls_prob_est and dre_load_name is None:
     dre = training.PosteriorProbability(
             model, pi=pi, rho=rho, beta=beta,
             lr=learning_rate_dre, weight_decay=weight_decay)
-    dre.train(p_set, sn_set, u_set, test_set_dre,
+    dre.train(p_set, sn_set, u_set, test_set,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
               dre_training_epochs)
@@ -375,7 +391,7 @@ if pu_prob_est and dre_load_name is None:
             lr=learning_rate_cls, weight_decay=weight_decay,
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
             prob_est=True)
-    dre.train(p_set, sn_set, u_set, test_set_dre,
+    dre.train(p_set, sn_set, u_set, test_set,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
               cls_training_epochs, convex_epochs=convex_epochs)
@@ -415,12 +431,37 @@ if partial_n:
     model = Net().cuda() if args.cuda else Net()
     cls = training.WeightedClassifier(
             model, dre_model, pi=pi, rho=rho,
-            sep_value=sep_value, adjust_p=adjust_p, adjust_sn=adjust_sn,
+            sep_value=sep_value,
+            adjust_p=adjust_p, adjust_sn=adjust_sn, hard_label=hard_label,
             lr=learning_rate_cls, weight_decay=weight_decay)
-    cls.train(p_set, sn_set, u_set, test_set_cls,
+    cls.train(p_set, sn_set, u_set, test_set,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
               cls_training_epochs, convex_epochs=convex_epochs)
+
+if sampling:
+    print('')
+    model = Net().cuda() if args.cuda else Net()
+    cls = training.SamplingClassifier(
+            model, dre_model, pi=pi, rho=rho,
+            lr=learning_rate_cls, weight_decay=weight_decay)
+    cls.train(p_set, sn_set, u_set, test_set,
+              p_batch_size, sn_batch_size, u_batch_size,
+              p_validation, sn_validation, u_validation,
+              cls_training_epochs, convex_epochs=convex_epochs)
+
+if p_some_u_plus_n:
+    print('')
+    model = Net().cuda() if args.cuda else Net()
+    cls = training.PSomeUPlusN(
+            model, pi=pi, rho=rho,
+            lr=learning_rate_cls, weight_decay=weight_decay,
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
+    cls.train(p_set, sn_set, u_set, test_set,
+              p_batch_size, sn_batch_size, u_batch_size,
+              p_validation, sn_validation, u_validation,
+              cls_training_epochs, pn_epochs,
+              convex_epochs=convex_epochs)
 
 if iwpn:
     print('')
@@ -433,7 +474,7 @@ if iwpn:
             model, pi=pi_, pp_model=dre_model,
             adjust_p=adjust_p, adjust_n=adjust_sn,
             lr=learning_rate_cls, weight_decay=weight_decay)
-    cls.train(p_set, sn_set, test_set_cls, p_batch_size, sn_batch_size,
+    cls.train(p_set, sn_set, test_set, p_batch_size, sn_batch_size,
               p_validation, sn_validation,
               cls_training_epochs, convex_epochs=convex_epochs)
 
@@ -445,7 +486,7 @@ if pu_plus_n:
             lr=learning_rate_cls, weight_decay=weight_decay,
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
             minus_n=minus_n)
-    cls.train(p_set, sn_set, u_set, test_set_cls,
+    cls.train(p_set, sn_set, u_set, test_set,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
               cls_training_epochs, convex_epochs=convex_epochs)
@@ -468,10 +509,20 @@ if pu_then_pn:
     cls2 = training.PNClassifier(
             model, pi=pi/(pi+rho), pu_model=cls.model,
             lr=learning_rate_cls, weight_decay=weight_decay)
-    cls2.train(p_set, sn_set, test_set_cls, p_batch_size, sn_batch_size,
+    cls2.train(p_set, sn_set, test_set, p_batch_size, sn_batch_size,
                p_validation, sn_validation,
                cls_training_epochs, convex_epochs=convex_epochs)
 
+if three_class:
+    print('')
+    model = Net(num_classes=3).cuda() if args.cuda else Net(num_classes=3)
+    cls = training.ThreeClassifier(
+            model, pi=pi, rho=rho, prob_pred=prob_pred,
+            lr=learning_rate_cls, weight_decay=weight_decay,
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
+    cls.train(p_set, sn_set, u_set, test_set,
+              p_batch_size, sn_batch_size, u_batch_size,
+              p_validation, sn_validation, u_validation, cls_training_epochs)
 
 if pu:
     print('')
@@ -479,7 +530,7 @@ if pu:
     cls = training.PUClassifier(
             model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay,
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
-    cls.train(p_set, u_set, test_set_cls, p_batch_size, u_batch_size,
+    cls.train(p_set, u_set, test_set, p_batch_size, u_batch_size,
               p_validation, u_validation,
               cls_training_epochs, convex_epochs=convex_epochs)
 
@@ -488,7 +539,7 @@ if unbiased_pn:
     model = Net().cuda() if args.cuda else Net()
     cls = training.PNClassifier(
             model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay)
-    cls.train(p_set, n_set, test_set_cls, p_batch_size, n_batch_size,
+    cls.train(p_set, n_set, test_set, p_batch_size, n_batch_size,
               p_validation, n_validation,
               cls_training_epochs, convex_epochs=convex_epochs)
 
@@ -500,7 +551,7 @@ if pnu:
             lr=learning_rate_cls, weight_decay=weight_decay,
             pn_fraction=non_pu_fraction,
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
-    cls.train(p_set, n_set, u_set, test_set_cls,
+    cls.train(p_set, n_set, u_set, test_set,
               p_batch_size, n_batch_size, u_batch_size,
               p_validation, n_validation, u_validation,
               cls_training_epochs, convex_epochs=convex_epochs)

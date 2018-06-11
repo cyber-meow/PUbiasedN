@@ -1,7 +1,7 @@
 import sys
 import numpy as np
 from copy import deepcopy
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, f1_score
 
 import torch
 import torch.utils.data
@@ -94,7 +94,13 @@ class Classifier(Training):
         if to_print:
             print('Test set: Accuracy: {}/{} ({:.2f}%)'.format(
                     correct, len(test_set), accuracy), flush=True)
-        target = test_set.tensors[1].numpy().reshape(-1)
+        target = test_set.tensors[1].numpy().reshape(-1).copy()
+        target[target == -1] = 0
+        pred = pred.cpu().numpy().reshape(-1)
+        pred[pred == -1] = 0
+        f1 = f1_score(target, pred) * 100
+        if to_print:
+            print('Test set: F1 Score: {:.2f}%'.format(f1), flush=True)
         output = output.cpu().numpy().reshape(-1)
         auc_score = roc_auc_score(target, output) * 100
         self.auc_scores.append(auc_score)
@@ -225,6 +231,13 @@ class PNClassifier(ClassifierFrom2):
         if to_print:
             print('Test set: Accuracy: {}/{} ({:.2f}%)'.format(
                     correct, len(test_set), accuracy), flush=True)
+        target = test_set.tensors[1].numpy().reshape(-1).copy()
+        target[target == -1] = 0
+        pred = pred.cpu().numpy().reshape(-1)
+        pred[pred == -1] = 0
+        f1 = f1_score(target, pred) * 100
+        if to_print:
+            print('Test set: F1 Score: {:.2f}%'.format(f1), flush=True)
 
 
 class PUClassifier(ClassifierFrom2):
@@ -261,7 +274,7 @@ class PUClassifier(ClassifierFrom2):
 
     def test_prob_est(self, test_set, to_print=True):
         x = test_set.tensors[0]
-        target = test_set.tensors[1]
+        target = test_set.tensors[2]
         target = target/torch.mean(target)*self.pi
         output = F.sigmoid(self.feed_in_batches(
             self.model, x, settings.test_batch_size)).cpu()
@@ -419,7 +432,7 @@ class PUClassifier3(ClassifierFrom3):
         x = test_set.tensors[0]
         if self.pre_model is not None:
             x = self.feed_in_batches(self.pre_model, x)
-        target = test_set.tensors[1]
+        target = test_set.tensors[2]
         output = self.feed_in_batches(
                 self.model, x, settings.test_batch_size).cpu()
         output_prob = F.sigmoid(output)
@@ -444,13 +457,182 @@ class PUClassifier3(ClassifierFrom3):
         if to_print:
             print('Test set: Accuracy: {}/{} ({:.2f}%)'.format(
                     correct, len(test_set), accuracy), flush=True)
-        target_pred = target_pred.numpy().reshape(-1)
-        output = output.cpu().numpy().reshape(-1)
-        auc_score = roc_auc_score(target_pred, output) * 100
-        self.auc_scores.append(auc_score)
-        if to_print:
-            print('Test set: Auc Score: {:.2f}%'.format(auc_score))
+
+
+class ThreeClassifier(ClassifierFrom3):
+
+    def __init__(self, model,
+                 nn=True, nn_threshold=0, nn_rate=1/2,
+                 pre_model=None, prob_pred=False, *args, **kwargs):
+        self.nn_rate = nn_rate
+        self.nn_threshold = nn_threshold
+        self.nn = nn
+        self.prob_pred = prob_pred
+        super().__init__(model, *args, **kwargs)
+
+    def compute_loss(self, px, snx, ux, convex, validation=False):
+        if len(px) <= 2:
+            px, snx, ux = px[0], snx[0], ux[0]
+        if validation:
+            fpx = self.feed_in_batches(self.model, px)
+            fsnx = self.feed_in_batches(self.model, snx)
+            fux = self.feed_in_batches(self.model, ux)
+        fpx, fsnx, fux = self.feed_together(self.model, px, snx, ux)
+        cross_entropy = nn.CrossEntropyLoss()
+        p_loss = self.pi * cross_entropy(
+            fpx, torch.zeros(len(px), dtype=torch.long).cuda())
+        sn_loss = self.rho * cross_entropy(
+            fsnx, torch.ones(len(snx), dtype=torch.long).cuda())
+        n_loss = (cross_entropy(
+                    fux, 2*torch.ones(len(ux), dtype=torch.long).cuda())
+                  - self.rho * cross_entropy(
+                      fsnx, 2*torch.ones(len(snx), dtype=torch.long).cuda())
+                  - self.pi * cross_entropy(
+                      fpx, 2*torch.ones(len(px), dtype=torch.long).cuda()))
+        true_loss = p_loss + sn_loss + n_loss
+        loss = true_loss
+        print(n_loss.item())
+        if self.nn and n_loss < self.nn_threshold:
+            loss = -n_loss * self.nn_rate
+        return loss.cpu(), true_loss.cpu()
+
+    def test(self, test_set, to_print=True):
         x = test_set.tensors[0]
+        output = self.feed_in_batches(
+                self.model, x, settings.test_batch_size).cpu()
+        output_prob = F.softmax(output, dim=1)
+        labels = test_set.tensors[1]
+        if self.prob_pred:
+            pred = torch.sign(output_prob[:, 0:1] - 0.5)
+        else:
+            pred = -torch.ones(labels.size())
+            pred[torch.argmax(output, dim=1) == 0] = 1
+        correct = torch.sum(pred.eq(labels).float()).item()
+        accuracy = 100 * correct/len(test_set)
+        self.test_accuracies.append(accuracy)
+        if to_print:
+            print('Test set: Accuracy: {}/{} ({:.2f}%)'.format(
+                    correct, len(test_set), accuracy), flush=True)
+        target = test_set.tensors[2]
+        est_posteriors = output_prob[:, 0:1] + output_prob[:, 1:2]
+        error = torch.mean((target - est_posteriors)**2).item()
+        error_std = torch.std((target - est_posteriors)**2).item()
+        if to_print:
+            print('Test set: Error: {}'.format(error), flush=True)
+            print('Test set: Error Std: {}'.format(error_std), flush=True)
+        target_normalized = target/torch.mean(target)
+        est_posteriors = est_posteriors/torch.mean(est_posteriors)
+        error = torch.mean((target_normalized - est_posteriors)**2).item()
+        error_std = torch.std((target_normalized - est_posteriors)**2).item()
+        if to_print:
+            print('Test set: Normalized Error: {}'.format(error))
+            print('Test set: Normalized Error Std: {}'.format(error_std))
+
+
+class PSomeUPlusN(ClassifierFrom3):
+
+    def __init__(self, model,
+                 nn=True, nn_threshold=0, nn_rate=1/2,
+                 *args, **kwargs):
+        self.nn_rate = nn_rate
+        self.nn_threshold = nn_threshold
+        self.nn = nn
+        super().__init__(model, *args, **kwargs)
+
+    def train(self, p_set, sn_set, u_set, test_set,
+              p_batch_size, sn_batch_size, u_batch_size,
+              p_validation, sn_validation, u_validation,
+              num_epochs, pn_epochs, convex_epochs=5,
+              test_interval=1, print_interval=1):
+
+        self.init_optimizer()
+        self.test(test_set, True)
+
+        p_loader = torch.utils.data.DataLoader(
+            p_set, batch_size=p_batch_size,
+            shuffle=True, num_workers=0)
+
+        sn_loader = torch.utils.data.DataLoader(
+            sn_set, batch_size=sn_batch_size,
+            shuffle=True, num_workers=0)
+
+        u_loader = torch.utils.data.DataLoader(
+            u_set, batch_size=u_batch_size,
+            shuffle=True, num_workers=1)
+
+        for epoch in range(num_epochs):
+
+            convex = True if epoch < convex_epochs else False
+            pn = True if epoch < pn_epochs else False
+            total_loss = self.train_step(
+                p_loader, sn_loader, u_loader,
+                p_validation, sn_validation, u_validation,
+                pn, convex)
+
+            if (epoch+1) % test_interval == 0 or epoch+1 == num_epochs:
+
+                to_print = (epoch+1) % print_interval == 0
+                if to_print:
+                    sys.stdout.write('Epoch: {}  '.format(epoch))
+                    print('Train Loss: {:.6f}'.format(total_loss))
+                self.test(test_set, to_print)
+
+        self.model = self.final_model
+        print('Final error:')
+        self.test(test_set, True)
+
+    def train_step(self, p_loader, sn_loader, u_loader,
+                   p_validation, sn_validation, u_validation,
+                   pn, convex):
+        losses = []
+        for i, x in enumerate(p_loader):
+            self.model.train()
+            self.optimizer.zero_grad()
+            snx = next(iter(sn_loader))
+            ux = next(iter(u_loader))
+            loss, true_loss = self.compute_loss(x, snx, ux, pn, convex)
+            losses.append(true_loss.item())
+            loss.backward()
+            self.optimizer.step()
+            if (i+1) % settings.validation_interval == 0:
+                self.validation(
+                    p_validation, sn_validation, u_validation, False, False)
+        return np.mean(np.array(losses))
+
+    def compute_loss(self, px, snx, ux, pn, convex, validation=False):
+        if len(px) <= 2:
+            px, snx, ux = px[0], snx[0], ux[0]
+        if validation:
+            fpx = self.feed_in_batches(self.model, px)
+            fsnx = self.feed_in_batches(self.model, snx)
+            fux = self.feed_in_batches(self.model, ux)
+        else:
+            fpx, fsnx, fux = self.feed_together(
+                self.model, px, snx, ux)
+        p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
+        sn_loss = self.rho * torch.mean(self.basic_loss(-fsnx, convex))
+        if pn:
+            loss = p_loss + sn_loss
+            return loss.cpu(), loss.cpu()
+        fux_positives = fux[fux >= 0]
+        u_length = int(fux.size(0) * (1-self.rho))
+        if fux_positives.size(0) < u_length:
+            fux_negatives = fux[fux < 0]
+            selected = np.random.choice(
+                fux_negatives.size(0),
+                u_length-fux_positives.size(0), replace=False)
+            fux_used = torch.cat([fux_positives, fux_negatives[selected]])
+        else:
+            fux_used = fux_positives
+        n_loss = (torch.sum(self.basic_loss(-fux_used, convex))/len(fux)
+                  - self.pi * torch.mean(self.basic_loss(-fpx, convex)))
+        if not validation:
+            print(n_loss.item())
+        true_loss = p_loss + sn_loss + n_loss
+        loss = true_loss
+        if self.nn and n_loss < self.nn_threshold:
+            loss = -n_loss * self.nn_rate
+        return loss.cpu(), true_loss.cpu()
 
 
 class PUClassifierPlusN(ClassifierFrom3):
@@ -470,10 +652,10 @@ class PUClassifierPlusN(ClassifierFrom3):
         for i, x in enumerate(p_loader):
             self.model.train()
             self.optimizer.zero_grad()
-            snx = next(iter(sn_loader))[0]
-            snx2 = next(iter(sn_loader))[0]
-            ux = next(iter(u_loader))[0]
-            loss, true_loss = self.compute_loss(x[0], snx, snx2, ux, convex)
+            snx = next(iter(sn_loader))
+            snx2 = next(iter(sn_loader))
+            ux = next(iter(u_loader))
+            loss, true_loss = self.compute_loss(x, snx, snx2, ux, convex)
             losses.append(true_loss.item())
             loss.backward()
             self.optimizer.step()
@@ -484,6 +666,8 @@ class PUClassifierPlusN(ClassifierFrom3):
         return np.mean(np.array(losses))
 
     def compute_loss(self, px, snx, snx2, ux, convex, validation=False):
+        if len(px) <= 2:
+            px, snx, snx2, ux = px[0], snx[0], snx2[0], ux[0]
         if validation:
             fpx = self.feed_in_batches(self.model, px)
             fsnx = self.feed_in_batches(self.model, snx)
@@ -545,7 +729,8 @@ class PNUClassifier(ClassifierFrom3):
 class WeightedClassifier(ClassifierFrom3):
 
     def __init__(self, model, pp_model, sep_value=0.3,
-                 adjust_p=True, adjust_sn=True, *args, **kwargs):
+                 adjust_p=True, adjust_sn=True, hard_label=False,
+                 *args, **kwargs):
         self.pp_model = pp_model
         if pp_model is not None:
             for param in self.pp_model.parameters():
@@ -554,13 +739,21 @@ class WeightedClassifier(ClassifierFrom3):
         self.sep_value = sep_value
         self.adjust_p = adjust_p
         self.adjust_sn = adjust_sn
+        self.hard_label = hard_label
         super().__init__(model, *args, **kwargs)
+
+    def train(self, p_set, sn_set, u_set, *args, **kwargs):
+        fux = self.feed_in_batches(self.pp_model, u_set.tensors[0])
+        fux_prob = F.sigmoid(fux)
+        print('Number of used unlabeled samples:',
+              torch.sum(fux_prob <= self.sep_value).item())
+        super().train(p_set, sn_set, u_set, *args, **kwargs)
 
     def train_step(self, *args):
         loss = super().train_step(*args)
         self.times += 1
-        if self.times % 50 == 0:
-            self.sep_value -= 0.1
+        # if self.times % 50 == 0:
+        #     self.sep_value -= 0.1
         return loss
 
     def compute_loss(self, px, snx, ux, convex, validation=False):
@@ -612,29 +805,64 @@ class WeightedClassifier(ClassifierFrom3):
         else:
             sn_loss = self.rho * torch.mean(self.basic_loss(-fsnx, convex))
 
-        u_loss = torch.sum(
-            self.basic_loss(-fux, convex)*(1-fux_prob)) / len(ux[0])
-        loss = p_loss + sn_loss + u_loss
+        if self.hard_label:
+            u_loss = torch.sum(
+                self.basic_loss(-fux, convex)) / len(ux[0])
+        else:
+            u_loss = torch.sum(
+                self.basic_loss(-fux, convex)*(1-fux_prob)) / len(ux[0])
+
+        if self.rho == 0:
+            loss = p_loss + u_loss
+        else:
+            loss = p_loss + sn_loss + u_loss
         return loss.cpu(), loss.cpu()
 
-    def test(self, test_set, to_print=True):
-        x = test_set.tensors[0]
-        target = test_set.tensors[1].type(settings.dtype)
-        output = self.feed_in_batches(self.model, x, settings.test_batch_size)
-        pred = torch.sign(output)
-        correct = torch.sum(pred.eq(target).float()).item()
-        accuracy = 100 * correct/len(test_set)
-        self.test_accuracies.append(accuracy)
-        if to_print:
-            print('Test set: Accuracy: {}/{} ({:.2f}%)'.format(
-                    correct, len(test_set), accuracy), flush=True)
-        target = test_set.tensors[1].numpy().reshape(-1)
-        output = output.cpu().numpy().reshape(-1)
-        auc_score = roc_auc_score(target, output) * 100
-        self.auc_scores.append(auc_score)
-        if to_print:
-            print('Test set: Auc Score: {:.2f}%'.format(auc_score),
-                  flush=True)
+
+class SamplingClassifier(ClassifierFrom3):
+
+    def __init__(self, model, pp_model, *args, **kwargs):
+        self.pp_model = pp_model
+        if pp_model is not None:
+            for param in self.pp_model.parameters():
+                param.requires_grad = False
+        super().__init__(model, *args, **kwargs)
+
+    def compute_loss(self, px, snx, ux, convex, validation=False):
+
+        if len(px) > 2:
+            px = px,
+            ux = ux,
+            snx = snx,
+
+        if validation:
+            fpx = self.feed_in_batches(self.model, px[0])
+            fux = self.feed_in_batches(self.model, ux[0])
+            fsnx = self.feed_in_batches(self.model, snx[0])
+            convex = False
+        else:
+            fpx, fsnx, fux = self.feed_together(
+                self.model, px[0], snx[0], ux[0])
+
+        if self.pp_model is None:
+            fux_prob = ux[1].type(settings.dtype)
+        else:
+            fux_prob = F.sigmoid(self.feed_in_batches(self.pp_model, ux[0]))
+        selected = np.random.binomial(
+            np.ones(len(ux[0]), dtype=int),
+            1-fux_prob.cpu().numpy().reshape(-1)).astype(bool)
+        selected = np.argwhere(selected).reshape(-1)
+        fux = fux[selected]
+
+        p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
+        sn_loss = self.rho * torch.mean(self.basic_loss(-fsnx, convex))
+        u_loss = torch.sum(self.basic_loss(-fux, convex)) / len(ux[0])
+
+        if self.rho == 0:
+            loss = p_loss + u_loss
+        else:
+            loss = p_loss + sn_loss + u_loss
+        return loss.cpu(), loss.cpu()
 
 
 class PosteriorProbability(Training):
@@ -752,7 +980,7 @@ class PosteriorProbability(Training):
 
     def test(self, test_set, to_print=True):
         x = test_set.tensors[0]
-        target = test_set.tensors[1]
+        target = test_set.tensors[2]
         output = F.sigmoid(self.feed_in_batches(
                 self.model, x, settings.test_batch_size).cpu())
         error = torch.mean((target-output)**2).item()
@@ -776,12 +1004,6 @@ class PosteriorProbability(Training):
         if to_print:
             print('Test set: Accuracy: {}/{} ({:.2f}%)'.format(
                     correct, len(test_set), accuracy), flush=True)
-        target_pred = target_pred.numpy().reshape(-1)
-        output = output.cpu().numpy().reshape(-1)
-        auc_score = roc_auc_score(target_pred, output) * 100
-        self.auc_scores.append(auc_score)
-        if to_print:
-            print('Test set: Auc Score: {:.2f}%'.format(auc_score))
 
 
 class PosteriorProbability2(Training):
@@ -852,7 +1074,7 @@ class PosteriorProbability2(Training):
 
     def test(self, test_set, to_print=True):
         x = test_set.tensors[0]
-        target = test_set.tensors[1]
+        target = test_set.tensors[2]
         target = target/torch.mean(target)*self.pi
         output = self.feed_in_batches(
             self.model, x, settings.test_batch_size).cpu()
