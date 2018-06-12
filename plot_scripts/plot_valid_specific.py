@@ -24,7 +24,8 @@ def read_directory(dir_name):
              'perfect_partial_n', 'identify_n', 'rho0', 'rho-0',
              'hard_label', 'sampling', 'p_some_u_plus_n', 'pu_plus_n',
              'perfect03_partial_n', 'perfect05_partial_n',
-             'nnpu', 'nn-pu', 'log_nnpu', 'pu+n', 'pu+-n', 'pu_then_pn',
+             'nnpu', 'nn-pu', 'log_nnpu', 'log_nn-pu',
+             'pu+n', 'pu+-n', 'pu_then_pn',
              'three_class_prob', 'three_class_max',
              'unbiased_pn', 'pn', 'iwpn',
              'pu_prob_est', 'pu_prob_sig_est', 'sig_partial_n',
@@ -34,10 +35,11 @@ def read_directory(dir_name):
     titles = ['test square error', 'test square error std',
               'test normalized square error',
               'test normalized square error std',
-              'test accuracy', 'test auc score', 'test f1 score',
+              'test accuracy', 'test balanced accuracy', 'test auc score',
+              'test precision', 'test recall', 'test f1 score',
               'training loss', 'validation loss', 'validation ls loss',
               'validation logistic loss', 'validation sigmoid loss']
-    plot_or_not = [False for _ in range(12)]
+    plot_or_not = [False for _ in range(15)]
 
     for f in listdir(dir_name):
         if f != 'all' and isfile(join(dir_name, f)):
@@ -46,16 +48,16 @@ def read_directory(dir_name):
             for name in names:
                 if f.startswith('{}_{}'.format(dataset, name)):
                     if name not in to_plot:
-                        to_plot[name] = [[] for _ in range(11)]
-                    for i in range(12):
+                        to_plot[name] = [[] for _ in range(15)]
+                    for i in range(15):
                         if (curves[i] != []
-                                and not (i == 5 and name == 'pu_then_pn')):
+                                and not (i == 6 and name == 'pu_then_pn')):
                             plot_or_not[i] = True
                             to_plot[name][i].append(curves[i])
-    for i in [2, 3]:
+    for i in [2, 3, 5]:
         plot_or_not[i] = False
 
-    for i in range(12):
+    for i in range(15):
         if plot_or_not[i]:
             plt.figure()
             plt.title(titles[i])
@@ -78,13 +80,15 @@ def read_one_file(filename):
     with open(filename) as f:
         content = f.readlines()
     errs, err_stds, n_errs, n_err_stds = [], [], [], []
-    accs, aucs, f1s = [], [], []
+    accs, b_accs, aucs = [], [], []
+    pres, recls, f1s = [], [], []
     losses, val_losses = [], []
     val_ls_losses, val_log_losses, val_sig_losses = [], [], []
     for i, line in enumerate(content):
         if line == '\n':
             errs, err_stds, n_errs, n_err_stds = [], [], [], []
-            accs, aucs = [], []
+            accs, b_accs, aucs = [], [], []
+            pres, recls, f1s = [], [], []
             losses, val_losses = [], []
             val_ls_losses, val_log_losses, val_sig_losses = [], [], []
         if line.startswith('Test set: Error:'):
@@ -100,17 +104,29 @@ def read_one_file(filename):
             a = line.split()
             n_err_stds.append(float(a[5]))
         if line.startswith('Test set: Accuracy:'):
+            a = line.split()
             try:
-                accs.append(float(line[-8:-3]))
+                accs.append(float(a[3][:-1]))
             except:
-                accs.append(float(line[-7:-3]))
+                try:
+                    accs.append(float(line[-8:-3]))
+                except:
+                    accs.append(float(line[-7:-3]))
+        if line.startswith('Test set: Balanced Accuracy:'):
+            a = line.split()
+            b_accs.append(float(a[4][:-1]))
         if line.startswith('Test set: Auc Score:'):
-            aucs.append(float(line[-8:-3]))
+            a = line.split()
+            aucs.append(float(a[4][:-1]))
+        if line.startswith('Test set: Precision:'):
+            a = line.split()
+            pres.append(float(a[3][:-1]))
+        if line.startswith('Test set: Recall Score:'):
+            a = line.split()
+            recls.append(float(a[4][:-1]))
         if line.startswith('Test set: F1 Score:'):
-            try:
-                f1s.append(float(line[-8:-3]))
-            except:
-                f1s.append(float(line[-7:-3]))
+            a = line.split()
+            f1s.append(float(a[4][:-1]))
         if line.startswith('valid'):
             a = line.split()
             if len(val_losses) <= 2:
@@ -140,7 +156,8 @@ def read_one_file(filename):
             a = line.split()
             val_sig_losses.append(float(a[3]))
     return (errs, err_stds, n_errs[2:], n_err_stds[2:],
-            accs, aucs, f1s, losses, val_losses,
+            accs, b_accs, aucs, pres, recls, f1s,
+            losses, val_losses,
             val_ls_losses, val_log_losses, val_sig_losses)
 
 

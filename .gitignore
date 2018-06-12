@@ -108,3 +108,4 @@ plots/
 *.p
 tmp/
 pickle/
+outdated/
