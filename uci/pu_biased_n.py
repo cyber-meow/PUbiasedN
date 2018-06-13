@@ -1,54 +1,63 @@
 from collections import OrderedDict
 
+import numpy as np
 import torch
 import torch.utils.data
-import torchvision
-import torchvision.transforms as transforms
+import torch.nn as nn
+import torch.nn.functional as F
 
 import settings
-from cifar10.nets import PreActResNet18
+
+
+dataset_path = 'data/UCI/abalone.ord'
+train_num = 2177
+test_num = 2000
+
+print('train_num', train_num)
+print('test_num', test_num)
+print('')
 
 
 num_classes = 10
 
-p_num = 1000
-sn_num = 1000
-u_num = 10000
 
-pv_num = 100
-snv_num = 100
-uv_num = 1000
+p_num = 50
+n_num = 50
+sn_num = 50
+u_num = 500
 
-u_cut = 40000
+pv_num = 50
+nv_num = 50
+snv_num = 50
+uv_num = 500
 
-pi = 0.4
-rho = 0.2
+u_cut = 1500
 
-positive_classes = [3, 4, 5, 7]
-# positive_classes = [1]
-# positive_classes = [0, 1, 8, 9]
+pi = 0.5
+rho = 0.3
 
-neg_ps = [0, 0, 1/2, 0, 0, 0, 1/2, 0, 0, 0]
-# neg_ps = [1/4, 0, 0, 0, 0, 0, 0, 0, 1/4, 1/2]
-# neg_ps = [0, 0, 0, 1/3, 0, 1/3, 0, 1/3, 0, 0]
+positive_classes = [0, 1, 2]
 
-non_pu_fraction = 0.6
+neg_ps = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0]
+
+non_pu_fraction = 0.5
 balanced = False
 
-sep_value = 0.3
-adjust_p = False
+sep_value = 0.5
+adjust_p = True
 adjust_sn = True
 
-cls_training_epochs = 200
-convex_epochs = 200
+cls_training_epochs = 100
+convex_epochs = 100
 
-p_batch_size = 100
-sn_batch_size = 100
-u_batch_size = 1000
+p_batch_size = 20
+n_batch_size = 25
+sn_batch_size = 25
+u_batch_size = 250
 
-learning_rate_cls = 1e-3
+learning_rate_cls = 1e-2
 weight_decay = 1e-4
-validation_momentum = 0.5
+validation_momentum = 0
 
 non_negative = True
 nn_threshold = 0
@@ -63,27 +72,27 @@ hard_label = False
 iwpn = False
 pu = False
 pnu = False
+unbiased_pn = False
 
-random_seed = 0
+random_seed = 1
 
 sets_save_name = None
-# sets_save_name = 'pickle/cifar10/1000_1000_10000/sets_357N_a.p'
 sets_load_name = None
 
 ppe_save_name = None
-# dre_save_name = 'pickle/cifar10/1000_1000_10000/ls_prob_est_rho02_357N_a.p'
 ppe_load_name = None
 
-settings.test_batch_size = 500
-settings.validation_interval = 5
+settings.validation_interval = 1
 
 
 params = OrderedDict([
     ('num_classes', num_classes),
     ('\np_num', p_num),
+    ('n_num', n_num),
     ('sn_num', sn_num),
     ('u_num', u_num),
     ('\npv_num', pv_num),
+    ('nv_num', nv_num),
     ('snv_num', snv_num),
     ('uv_num', uv_num),
     ('\nu_cut', u_cut),
@@ -99,6 +108,7 @@ params = OrderedDict([
     ('\ncls_training_epochs', cls_training_epochs),
     ('convex_epochs', convex_epochs),
     ('\np_batch_size', p_batch_size),
+    ('n_batch_size', n_batch_size),
     ('sn_batch_size', sn_batch_size),
     ('u_batch_size', u_batch_size),
     ('\nlearning_rate_cls', learning_rate_cls),
@@ -114,6 +124,7 @@ params = OrderedDict([
     ('\niwpn', iwpn),
     ('pu', pu),
     ('pnu', pnu),
+    ('unbiased_pn', unbiased_pn),
     ('\nrandom_seed', random_seed),
     ('\nsets_save_name', sets_save_name),
     ('sets_load_name', sets_load_name),
@@ -122,31 +133,40 @@ params = OrderedDict([
 ])
 
 
-transform = transforms.Compose(
-    [transforms.ToTensor(),
-     transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))])
+data = np.loadtxt(dataset_path)
 
-# Load and transform data
-cifar10 = torchvision.datasets.CIFAR10(
-    './data/CIFAR10', train=True, download=True, transform=transform)
+labels = data[:, -1] - 1
+data = data[:, :-1]
 
-cifar10_test = torchvision.datasets.CIFAR10(
-    './data/CIFAR10', train=False, download=True, transform=transform)
+priors = []
+for i in range(num_classes):
+    priors.append(np.sum(labels == i).item()/len(labels))
+params['\npriors'] = priors
+
+np.random.seed(random_seed)
+print('random_seed', random_seed)
+print('')
+
+idxs = np.random.permutation(len(data))
+
+train_data = torch.tensor(data[idxs][:train_num])
+train_labels = torch.tensor(labels[idxs][:train_num])
+
+# for i in range(num_classes):
+#     print(torch.sum(train_labels == i))
+
+test_data = torch.tensor(data[idxs][train_num:])
+test_labels = torch.tensor(labels[idxs][train_num:])
 
 
-train_data = torch.zeros(cifar10.train_data.shape)
-train_data = train_data.permute(0, 3, 1, 2)
-# must use one dimensional vector
-train_labels = torch.tensor(cifar10.train_labels)
+class Net(nn.Module):
 
-for i, (image, _) in enumerate(cifar10):
-    train_data[i] = image
+    def __init__(self, num_input=10, num_classes=1):
+        super(Net, self).__init__()
+        self.fc1 = nn.Linear(num_input, 64)
+        self.fc2 = nn.Linear(64, 1)
 
-test_data = torch.zeros(cifar10_test.test_data.shape)
-test_data = test_data.permute(0, 3, 1, 2)
-test_labels = torch.tensor(cifar10_test.test_labels)
-
-for i, (image, _) in enumerate(cifar10_test):
-    test_data[i] = image
-
-Net = PreActResNet18
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x

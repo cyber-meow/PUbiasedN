@@ -31,6 +31,8 @@ class Training(object):
         self.optimizer = optim.Adam(
             self.model.parameters(),
             lr=self.lr, weight_decay=self.weight_decay, amsgrad=True)
+        self.scheduler = optim.lr_scheduler.StepLR(
+            self.optimizer, step_size=100, gamma=0.1)
 
     def validation(self, *args):
         _, validation_loss = self.compute_loss(*args, validation=True)
@@ -181,6 +183,7 @@ class ClassifierFrom2(Classifier):
 
     def train_step(self, p_loader, n_loader,
                    p_validation, n_validation, convex):
+        self.scheduler.step()
         losses = []
         for i, x in enumerate(p_loader):
             self.model.train()
@@ -334,6 +337,7 @@ class ClassifierFrom3(Classifier):
 
     def train_step(self, p_loader, sn_loader, u_loader,
                    p_validation, sn_validation, u_validation, convex):
+        self.scheduler.step()
         losses = []
         for i, x in enumerate(p_loader):
             self.model.train()

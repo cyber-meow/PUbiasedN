@@ -63,6 +63,8 @@ iwpn = False
 pu = False
 pnu = False
 
+random_seed = 0
+
 sets_save_name = None
 # sets_load_name = 'pickle/mnist/1000_1000_10000/imbN/sets_imbN_a.p'
 sets_load_name = None
@@ -109,6 +111,7 @@ params = OrderedDict([
     ('\niwpn', iwpn),
     ('pu', pu),
     ('pnu', pnu),
+    ('\nrandom_seed', random_seed),
     ('\nsets_save_name', sets_save_name),
     ('sets_load_name', sets_load_name),
     ('ppe_save_name', ppe_save_name),

@@ -1,12 +1,24 @@
-import sys
+import argparse
 from os import listdir
-from os.path import isfile, join
-# import numpy as np
+from os.path import isfile, isdir, join
+import numpy as np
 # import scipy.ndimage
 import matplotlib.pyplot as plt
 
 
+parser = argparse.ArgumentParser()
+
+parser.add_argument('directory_path')
+parser.add_argument('--dataset', action='store', default='mnist')
+
+args = parser.parse_args()
+dataset = args.dataset
+
+
 def read_directory(dir_name):
+
+    plot_all = False
+    to_plot = {}
 
     titles = ['test square error', 'test square error std',
               'test normalized square error',
@@ -15,31 +27,38 @@ def read_directory(dir_name):
               'test precision', 'test recall', 'test f1 score',
               'training loss', 'validation loss', 'validation ls loss',
               'validation logistic loss', 'validation sigmoid loss']
-
-    to_plot = [[] for _ in range(15)]
     plot_or_not = [False for _ in range(15)]
-    names = []
 
-    for f in listdir(dir_name):
-        if isfile(join(dir_name, f)):
-            curves = read_one_file(join(dir_name, f))
-            print(f)
-            names.append(f)
-            for i in range(15):
-                if curves[i] != []:
-                    plot_or_not[i] = True
-                    to_plot[i].append(curves[i])
-
-    for i in [2, 3, 5, 6, 7, 8]:
+    for d in listdir(dir_name):
+        if d != 'ignored' and isdir(join(dir_name, d)):
+            to_plot[d] = [[] for _ in range(15)]
+            for f in listdir(join(dir_name, d)):
+                if isfile(join(dir_name, d, f)):
+                    curves = read_one_file(join(dir_name, d, f))
+                    print(f)
+                    for i in range(15):
+                        if curves[i] != []:
+                            plot_or_not[i] = True
+                            to_plot[d][i].append(curves[i])
+    for i in [2, 3, 5, 7, 8]:
         plot_or_not[i] = False
 
     for i in range(15):
         if plot_or_not[i]:
             plt.figure()
             plt.title(titles[i])
-            for j, curve in enumerate(to_plot[i]):
-                # curve = scipy.ndimage.filters.gaussian_filter1d(curve, 2)
-                plt.plot(curve, label=names[j])
+            for lab in to_plot:
+                if plot_all:
+                    for j, curve in enumerate(to_plot[lab][i]):
+                        plt.plot(curve, label='{}_{}'.format(lab, j))
+                else:
+                    if to_plot[lab][i] != []:
+                        m = np.mean(np.array(to_plot[lab][i]), axis=0)
+                        # m = scipy.ndimage.filters.gaussian_filter1d(m, 1)
+                        s = np.std(np.array(to_plot[lab][i]), axis=0)
+                        plt.plot(m, label=lab)
+                        plt.fill_between(
+                                np.arange(len(m)), m-s/2, m+s/2, alpha=0.5)
             plt.legend()
 
 
@@ -53,11 +72,11 @@ def read_one_file(filename):
     val_ls_losses, val_log_losses, val_sig_losses = [], [], []
     for i, line in enumerate(content):
         if line == '\n':
-            # errs, err_stds, n_errs, n_err_stds = [], [], [], []
-            # accs, b_accs, aucs = [], [], []
+            errs, err_stds, n_errs, n_err_stds = [], [], [], []
+            accs, b_accs, aucs = [], [], []
             pres, recls, f1s = [], [], []
-            # losses, val_losses = [], []
-            # val_ls_losses, val_log_losses, val_sig_losses = [], [], []
+            losses, val_losses = [], []
+            val_ls_losses, val_log_losses, val_sig_losses = [], [], []
         if line.startswith('Test set: Error:'):
             a = line.split()
             errs.append(float(a[3]))
@@ -119,5 +138,5 @@ def read_one_file(filename):
             val_ls_losses, val_log_losses, val_sig_losses)
 
 
-read_directory(sys.argv[1])
+read_directory(args.directory_path)
 plt.show()
