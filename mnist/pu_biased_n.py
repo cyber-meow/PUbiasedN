@@ -49,6 +49,9 @@ learning_rate_cls = 1e-3
 weight_decay = 1e-4
 validation_momentum = 0.5
 
+lr_decrease_epoch = 60
+gamma = 0.1
+
 non_negative = True
 nn_threshold = 0
 nn_rate = 1/3
@@ -101,6 +104,8 @@ params = OrderedDict([
     ('\nlearning_rate_cls', learning_rate_cls),
     ('weight_decay', weight_decay),
     ('validation_momentum', validation_momentum),
+    ('\nlr_decrease_epoch', lr_decrease_epoch),
+    ('gamma', gamma),
     ('\nnon_negative', non_negative),
     ('nn_threshold', nn_threshold),
     ('nn_rate', nn_rate),

@@ -73,7 +73,7 @@ def read_one_file(filename):
     for i, line in enumerate(content):
         if line == '\n':
             errs, err_stds, n_errs, n_err_stds = [], [], [], []
-            accs, b_accs, aucs = [], [], []
+            # accs, b_accs, aucs = [], [], []
             pres, recls, f1s = [], [], []
             losses, val_losses = [], []
             val_ls_losses, val_log_losses, val_sig_losses = [], [], []

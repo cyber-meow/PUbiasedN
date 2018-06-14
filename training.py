@@ -16,10 +16,14 @@ class Training(object):
 
     def __init__(self, model=None,
                  lr=5e-3, weight_decay=1e-2,
-                 validation_momentum=0.5, balanced=False):
+                 validation_momentum=0.5,
+                 lr_decrease_epoch=100, gamma=0.1, balanced=False):
+        self.times = 0
         self.model = model
         self.lr = lr
         self.weight_decay = weight_decay
+        self.lr_decrease_epoch = lr_decrease_epoch
+        self.gamma = gamma
         self.balanced = balanced
         self.validation_momentum = validation_momentum
         self.min_vloss = float('inf')
@@ -32,7 +36,7 @@ class Training(object):
             self.model.parameters(),
             lr=self.lr, weight_decay=self.weight_decay, amsgrad=True)
         self.scheduler = optim.lr_scheduler.StepLR(
-            self.optimizer, step_size=100, gamma=0.1)
+            self.optimizer, step_size=self.lr_decrease_epoch, gamma=self.gamma)
 
     def validation(self, *args):
         _, validation_loss = self.compute_loss(*args, validation=True)
@@ -43,7 +47,8 @@ class Training(object):
             self.curr_accu_vloss = (
                 self.curr_accu_vloss * self.validation_momentum
                 + validation_loss.item() * (1-self.validation_momentum))
-        if self.curr_accu_vloss < self.min_vloss:
+        if (self.curr_accu_vloss < self.min_vloss
+                and self.times > self.lr_decrease_epoch):
             self.min_vloss = self.curr_accu_vloss
             self.final_model = deepcopy(self.model)
         return validation_loss
@@ -177,13 +182,15 @@ class ClassifierFrom2(Classifier):
                     print('Train Loss: {:.6f}'.format(average_loss))
                 self.test(test_set, to_print)
 
-        self.model = self.final_model
-        print('Final error:')
-        self.test(test_set, True)
+        if self.final_model is not None:
+            self.model = self.final_model
+            print('Final error:')
+            self.test(test_set, True)
 
     def train_step(self, p_loader, n_loader,
                    p_validation, n_validation, convex):
         self.scheduler.step()
+        self.times += 1
         losses = []
         for i, x in enumerate(p_loader):
             self.model.train()
@@ -331,13 +338,15 @@ class ClassifierFrom3(Classifier):
                     print('Train Loss: {:.6f}'.format(total_loss))
                 self.test(test_set, to_print)
 
-        self.model = self.final_model
-        print('Final error:')
-        self.test(test_set, True)
+        if self.final_model is not None:
+            self.model = self.final_model
+            print('Final error:')
+            self.test(test_set, True)
 
     def train_step(self, p_loader, sn_loader, u_loader,
                    p_validation, sn_validation, u_validation, convex):
         self.scheduler.step()
+        self.times += 1
         losses = []
         for i, x in enumerate(p_loader):
             self.model.train()
@@ -352,6 +361,16 @@ class ClassifierFrom3(Classifier):
                 self.validation(
                     p_validation, sn_validation, u_validation, convex)
         return np.mean(np.array(losses))
+
+    def compute_pu_loss(self, px, nx, ux):
+        px, nx, ux = px[0], nx[0], ux[0]
+        fpx = self.feed_in_batches(self.model, px)
+        fux = self.feed_in_batches(self.model, ux)
+        p_loss = self.pi * torch.mean(self.basic_loss(fpx, False))
+        n_loss = (torch.mean(self.basic_loss(-fux, False))
+                  - self.pi * torch.mean(self.basic_loss(-fpx, False)))
+        loss = p_loss + n_loss
+        return loss.cpu(), loss.cpu()
 
 
 class PUClassifier3(ClassifierFrom3):
@@ -431,7 +450,8 @@ class PUClassifier3(ClassifierFrom3):
             self.curr_accu_vloss = (
                 self.curr_accu_vloss * self.validation_momentum
                 + ls_loss.cpu().item() * (1-self.validation_momentum))
-        if self.curr_accu_vloss < self.min_vloss:
+        if (self.curr_accu_vloss < self.min_vloss
+                and self.times > self.lr_decrease_epoch):
             self.min_vloss = self.curr_accu_vloss
             self.final_model = deepcopy(self.model)
         return ls_loss
@@ -472,21 +492,17 @@ class PNUClassifier(ClassifierFrom3):
         super().__init__(model, *args, **kwargs)
 
     def compute_loss(self, px, nx, ux, convex, validation=False):
-        px, nx, ux = px[0], nx[0], ux[0]
         if validation:
-            fpx = self.feed_in_batches(self.model, px)
-            fnx = self.feed_in_batches(self.model, nx)
-            fux = self.feed_in_batches(self.model, ux)
-            convex = False
-        else:
-            fpx, fnx, fux = self.feed_together(self.model, px, nx, ux)
+            return self.compute_pu_loss(px, nx, ux)
+        px, nx, ux = px[0], nx[0], ux[0]
+        fpx, fnx, fux = self.feed_together(self.model, px, nx, ux)
         p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
         n_loss = (1-self.pi) * torch.mean(self.basic_loss(-fnx, convex))
         n_loss2 = (torch.mean(self.basic_loss(-fux, convex))
                    - self.pi * torch.mean(self.basic_loss(-fpx, convex)))
         true_loss = (
             p_loss + n_loss * self.pn_fraction
-            + n_loss * (1-self.pn_fraction))
+            + n_loss2 * (1-self.pn_fraction))
         loss = true_loss
         if self.nn and n_loss2 < self.nn_threshold:
             loss = -n_loss2 * self.nn_rate
@@ -498,7 +514,6 @@ class WeightedClassifier(ClassifierFrom3):
     def __init__(self, model, sep_value=0.3,
                  adjust_p=True, adjust_sn=True, hard_label=False,
                  *args, **kwargs):
-        self.times = 0
         self.sep_value = sep_value
         self.adjust_p = adjust_p
         self.adjust_sn = adjust_sn
@@ -511,27 +526,16 @@ class WeightedClassifier(ClassifierFrom3):
               torch.sum(fux_prob <= self.sep_value).item())
         super().train(p_set, sn_set, u_set, *args, **kwargs)
 
-    def train_step(self, *args):
-        loss = super().train_step(*args)
-        self.times += 1
-        # if self.times % 50 == 0:
-        #     self.sep_value -= 0.1
-        return loss
-
     def compute_loss(self, px, snx, ux, convex, validation=False):
 
         if validation:
-            fpx = self.feed_in_batches(self.model, px[0])
-            fux = self.feed_in_batches(self.model, ux[0])
-            if self.rho != 0:
-                fsnx = self.feed_in_batches(self.model, snx[0])
-            convex = False
+            return self.compute_pu_loss(px, snx, ux)
+
+        if self.rho != 0:
+            fpx, fsnx, fux = self.feed_together(
+                self.model, px[0], snx[0], ux[0])
         else:
-            if self.rho != 0:
-                fpx, fsnx, fux = self.feed_together(
-                    self.model, px[0], snx[0], ux[0])
-            else:
-                fpx, fux = self.feed_together(self.model, px[0], ux[0])
+            fpx, fux = self.feed_together(self.model, px[0], ux[0])
 
         # Divide into two parts according to the value of p(s=1|x)
         fux_prob = ux[1].type(settings.dtype)

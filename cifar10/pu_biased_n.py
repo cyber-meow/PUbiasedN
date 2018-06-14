@@ -15,24 +15,24 @@ p_num = 1000
 sn_num = 1000
 u_num = 10000
 
-pv_num = 100
-snv_num = 100
-uv_num = 1000
+pv_num = 200
+snv_num = 200
+uv_num = 2000
 
 u_cut = 40000
 
 pi = 0.4
 rho = 0.2
 
-positive_classes = [3, 4, 5, 7]
+# positive_classes = [3, 4, 5, 7]
 # positive_classes = [1]
-# positive_classes = [0, 1, 8, 9]
+positive_classes = [0, 1, 8, 9]
 
-neg_ps = [0, 0, 1/2, 0, 0, 0, 1/2, 0, 0, 0]
+# neg_ps = [0, 0, 1/2, 0, 0, 0, 1/2, 0, 0, 0]
 # neg_ps = [1/4, 0, 0, 0, 0, 0, 0, 0, 1/4, 1/2]
-# neg_ps = [0, 0, 0, 1/3, 0, 1/3, 0, 1/3, 0, 0]
+neg_ps = [0, 0, 0, 1/3, 0, 1/3, 0, 1/3, 0, 0]
 
-non_pu_fraction = 0.6
+non_pu_fraction = 0.5
 balanced = False
 
 sep_value = 0.3
@@ -49,6 +49,9 @@ u_batch_size = 1000
 learning_rate_cls = 1e-3
 weight_decay = 1e-4
 validation_momentum = 0.5
+
+lr_decrease_epoch = 100
+gamma = 0.1
 
 non_negative = True
 nn_threshold = 0
@@ -104,6 +107,8 @@ params = OrderedDict([
     ('\nlearning_rate_cls', learning_rate_cls),
     ('weight_decay', weight_decay),
     ('validation_momentum', validation_momentum),
+    ('\nlr_decrease_epoch', lr_decrease_epoch),
+    ('gamma', gamma),
     ('\nnon_negative', non_negative),
     ('nn_threshold', nn_threshold),
     ('nn_rate', nn_rate),

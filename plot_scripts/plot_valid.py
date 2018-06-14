@@ -30,7 +30,7 @@ def read_directory(dir_name):
                     plot_or_not[i] = True
                     to_plot[i].append(curves[i])
 
-    for i in [2, 3, 5, 6, 7, 8]:
+    for i in [1, 2, 3, 5, 7, 8, 13, 14]:
         plot_or_not[i] = False
 
     for i in range(15):
@@ -52,10 +52,10 @@ def read_one_file(filename):
     losses, val_losses = [], []
     val_ls_losses, val_log_losses, val_sig_losses = [], [], []
     for i, line in enumerate(content):
-        if line == '\n':
+        # if line == '\n':
             # errs, err_stds, n_errs, n_err_stds = [], [], [], []
             # accs, b_accs, aucs = [], [], []
-            pres, recls, f1s = [], [], []
+            # pres, recls, f1s = [], [], []
             # losses, val_losses = [], []
             # val_ls_losses, val_log_losses, val_sig_losses = [], [], []
         if line.startswith('Test set: Error:'):

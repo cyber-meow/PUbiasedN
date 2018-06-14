@@ -61,6 +61,9 @@ learning_rate_cls = params['\nlearning_rate_cls']
 weight_decay = params['weight_decay']
 validation_momentum = params['validation_momentum']
 
+lr_decrease_epoch = params['\nlr_decrease_epoch']
+gamma = params['gamma']
+
 non_negative = params['\nnon_negative']
 nn_threshold = params['nn_threshold']
 nn_rate = params['nn_rate']
@@ -86,7 +89,7 @@ ppe_load_name = params['ppe_load_name']
 
 priors = params.get('\npriors', None)
 if priors is None:
-    priors = [1/num_classes for _ in num_classes]
+    priors = [1/num_classes for _ in range(num_classes)]
 
 
 parser = argparse.ArgumentParser(description='Main File')
@@ -218,6 +221,7 @@ if pu_prob_est and ppe_load_name is None:
     ppe = training.PUClassifier3(
             model, pi=pi, rho=rho,
             lr=learning_rate_cls, weight_decay=weight_decay,
+            lr_decrease_epoch=lr_decrease_epoch, gamma=gamma,
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
             prob_est=True, validation_momentum=validation_momentum)
     ppe.train(p_set, sn_set, u_set, test_set,
@@ -264,6 +268,7 @@ if partial_n:
             sep_value=sep_value,
             adjust_p=adjust_p, adjust_sn=adjust_sn, hard_label=hard_label,
             lr=learning_rate_cls, weight_decay=weight_decay,
+            lr_decrease_epoch=lr_decrease_epoch, gamma=gamma,
             validation_momentum=validation_momentum)
     cls.train(p_set, sn_set, u_set, test_set,
               p_batch_size, sn_batch_size, u_batch_size,
@@ -277,6 +282,7 @@ if iwpn:
             model, pi=pi/(pi+rho),
             adjust_p=adjust_p, adjust_n=adjust_sn,
             lr=learning_rate_cls, weight_decay=weight_decay,
+            lr_decrease_epoch=lr_decrease_epoch, gamma=gamma,
             validation_momentum=validation_momentum)
     cls.train(p_set, sn_set, test_set, p_batch_size, sn_batch_size,
               p_validation, sn_validation,
@@ -288,6 +294,7 @@ if pu:
     cls = training.PUClassifier(
             model, pi=pi, balanced=balanced,
             lr=learning_rate_cls, weight_decay=weight_decay,
+            lr_decrease_epoch=lr_decrease_epoch, gamma=gamma,
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
             validation_momentum=validation_momentum)
     cls.train(p_set, u_set, test_set, p_batch_size, u_batch_size,
@@ -300,6 +307,7 @@ if pnu:
     cls = training.PNUClassifier(
             model, pi=pi,
             lr=learning_rate_cls, weight_decay=weight_decay,
+            lr_decrease_epoch=lr_decrease_epoch, gamma=gamma,
             pn_fraction=non_pu_fraction,
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
             validation_momentum=validation_momentum)
@@ -312,7 +320,8 @@ if unbiased_pn:
     print('')
     model = Net().cuda() if args.cuda else Net()
     cls = training.PNClassifier(
-            model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay)
+            model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay,
+            lr_decrease_epoch=lr_decrease_epoch, gamma=gamma)
     cls.train(p_set, n_set, test_set, p_batch_size, n_batch_size,
               p_validation, n_validation,
               cls_training_epochs, convex_epochs=convex_epochs)

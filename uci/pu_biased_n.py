@@ -9,36 +9,36 @@ import torch.nn.functional as F
 import settings
 
 
-dataset_path = 'data/UCI/abalone.ord'
-train_num = 2177
-test_num = 2000
+dataset_path = 'data/UCI/cal_housing.ord'
+train_num = 12640
+test_num = 80000
 
 print('train_num', train_num)
 print('test_num', test_num)
 print('')
 
+num_classes = 5
+num_input = 8
 
-num_classes = 10
 
-
-p_num = 50
-n_num = 50
+p_num = 3000
+n_num = 3000
 sn_num = 50
 u_num = 500
 
-pv_num = 50
-nv_num = 50
+pv_num = 1500
+nv_num = 1500
 snv_num = 50
 uv_num = 500
 
-u_cut = 1500
+u_cut = 8000
 
-pi = 0.5
-rho = 0.3
+pi = 0.42
+rho = 0.2
 
-positive_classes = [0, 1, 2]
+positive_classes = [3, 4]
 
-neg_ps = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0]
+neg_ps = [0, 0, 1, 0, 0]
 
 non_pu_fraction = 0.5
 balanced = False
@@ -47,11 +47,11 @@ sep_value = 0.5
 adjust_p = True
 adjust_sn = True
 
-cls_training_epochs = 100
-convex_epochs = 100
+cls_training_epochs = 200
+convex_epochs = 200
 
-p_batch_size = 20
-n_batch_size = 25
+p_batch_size = 50
+n_batch_size = 50
 sn_batch_size = 25
 u_batch_size = 250
 
@@ -59,22 +59,27 @@ learning_rate_cls = 1e-2
 weight_decay = 1e-4
 validation_momentum = 0
 
+lr_decrease_epoch = 100
+gamma = 0.1
+
 non_negative = True
 nn_threshold = 0
 nn_rate = 1/3
 
-pu_prob_est = True
+settings.validation_interval = 60
+
+pu_prob_est = False
 use_true_post = False
 
-partial_n = True
+partial_n = False
 hard_label = False
 
 iwpn = False
 pu = False
 pnu = False
-unbiased_pn = False
+unbiased_pn = True
 
-random_seed = 1
+random_seed = 4
 
 sets_save_name = None
 sets_load_name = None
@@ -82,7 +87,7 @@ sets_load_name = None
 ppe_save_name = None
 ppe_load_name = None
 
-settings.validation_interval = 1
+settings.validation_interval = 10
 
 
 params = OrderedDict([
@@ -114,6 +119,8 @@ params = OrderedDict([
     ('\nlearning_rate_cls', learning_rate_cls),
     ('weight_decay', weight_decay),
     ('validation_momentum', validation_momentum),
+    ('\nlr_decrease_epoch', lr_decrease_epoch),
+    ('gamma', gamma),
     ('\nnon_negative', non_negative),
     ('nn_threshold', nn_threshold),
     ('nn_rate', nn_rate),
@@ -161,12 +168,14 @@ test_labels = torch.tensor(labels[idxs][train_num:])
 
 class Net(nn.Module):
 
-    def __init__(self, num_input=10, num_classes=1):
+    def __init__(self, num_classes=1):
         super(Net, self).__init__()
-        self.fc1 = nn.Linear(num_input, 64)
-        self.fc2 = nn.Linear(64, 1)
+        self.fc1 = nn.Linear(num_input, num_input*3)
+        self.fc2 = nn.Linear(num_input*3, num_input)
+        self.fc3 = nn.Linear(num_input, 1)
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
-        x = self.fc2(x)
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
         return x
