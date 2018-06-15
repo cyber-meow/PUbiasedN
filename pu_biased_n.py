@@ -97,7 +97,7 @@ parser = argparse.ArgumentParser(description='Main File')
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
 
-parser.add_argument('--random-seed', type=int)
+parser.add_argument('--random-seed', type=int, default=0)
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -111,6 +111,7 @@ settings.dtype = torch.cuda.FloatTensor if args.cuda else torch.FloatTensor
 
 for key, value in params.items():
     print('{}: {}'.format(key, value))
+print('\nvalidation_interval', settings.validation_interval)
 print('', flush=True)
 
 
@@ -131,7 +132,7 @@ def pick_p_data(data, labels, n):
             p_idxs[(labels == i).numpy().astype(bool)] = 1
     p_idxs = np.argwhere(p_idxs == 1).reshape(-1)
     selected_p = np.random.choice(p_idxs, n, replace=False)
-    return data[selected_p], labels[selected_p]
+    return data[selected_p], posteriors(labels[selected_p])
 
 
 def pick_n_data(data, labels, n):
@@ -141,7 +142,7 @@ def pick_n_data(data, labels, n):
             n_idxs[(labels == i).numpy().astype(bool)] = 1
     n_idxs = np.argwhere(n_idxs == 1).reshape(-1)
     selected_n = np.random.choice(n_idxs, n, replace=False)
-    return data[selected_n], labels[selected_n]
+    return data[selected_n], posteriors(labels[selected_n])
 
 
 def pick_sn_data(data, labels, n):
@@ -213,6 +214,9 @@ test_posteriors = posteriors(test_labels)
 
 test_set = torch.utils.data.TensorDataset(
     test_data, t_labels.unsqueeze(1).float(), test_posteriors)
+
+
+torch.manual_seed(random_seed)
 
 
 if pu_prob_est and ppe_load_name is None:

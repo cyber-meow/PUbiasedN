@@ -1,3 +1,4 @@
+import argparse
 from collections import OrderedDict
 
 import numpy as np
@@ -9,36 +10,36 @@ import torch.nn.functional as F
 import settings
 
 
-dataset_path = 'data/UCI/cal_housing.ord'
-train_num = 12640
-test_num = 80000
+parser = argparse.ArgumentParser(description='UCI')
+parser.add_argument('--random-seed', type=int, default=0)
+args = parser.parse_args()
 
-print('train_num', train_num)
-print('test_num', test_num)
-print('')
+
+dataset_path = 'data/UCI/stock.ord'
+train_num = 600
+test_num = 350
 
 num_classes = 5
-num_input = 8
+num_input = 9
 
+p_num = 100
+n_num = 100
+sn_num = 60
+u_num = 300
 
-p_num = 3000
-n_num = 3000
-sn_num = 50
-u_num = 500
+pv_num = 100
+nv_num = 100
+snv_num = 60
+uv_num = 300
 
-pv_num = 1500
-nv_num = 1500
-snv_num = 50
-uv_num = 500
+u_cut = 300
 
-u_cut = 8000
+pi = 0.59
+rho = 0
 
-pi = 0.42
-rho = 0.2
+positive_classes = [2, 3, 4]
 
-positive_classes = [3, 4]
-
-neg_ps = [0, 0, 1, 0, 0]
+neg_ps = [0, 1, 0, 0, 0]
 
 non_pu_fraction = 0.5
 balanced = False
@@ -50,12 +51,12 @@ adjust_sn = True
 cls_training_epochs = 200
 convex_epochs = 200
 
-p_batch_size = 50
-n_batch_size = 50
-sn_batch_size = 25
-u_batch_size = 250
+p_batch_size = 10
+n_batch_size = 10
+sn_batch_size = 6
+u_batch_size = 30
 
-learning_rate_cls = 1e-2
+learning_rate_cls = 1e-3
 weight_decay = 1e-4
 validation_momentum = 0
 
@@ -64,12 +65,12 @@ gamma = 0.1
 
 non_negative = True
 nn_threshold = 0
-nn_rate = 1/3
+nn_rate = 1
 
-settings.validation_interval = 60
+settings.validation_interval = 10
 
 pu_prob_est = False
-use_true_post = False
+use_true_post = True
 
 partial_n = False
 hard_label = False
@@ -79,7 +80,7 @@ pu = False
 pnu = False
 unbiased_pn = True
 
-random_seed = 4
+random_seed = args.random_seed
 
 sets_save_name = None
 sets_load_name = None
@@ -87,7 +88,10 @@ sets_load_name = None
 ppe_save_name = None
 ppe_load_name = None
 
-settings.validation_interval = 10
+
+print('train_num', train_num)
+print('test_num', test_num)
+print('')
 
 
 params = OrderedDict([
@@ -178,4 +182,17 @@ class Net(nn.Module):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
+        return x
+
+
+class Net2(nn.Module):
+
+    def __init__(self, num_classes=1):
+        super(Net, self).__init__()
+        self.fc1 = nn.Linear(num_input, num_input*2)
+        self.fc2 = nn.Linear(num_input*2, 1)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
         return x

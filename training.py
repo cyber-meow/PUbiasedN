@@ -315,9 +315,12 @@ class ClassifierFrom3(Classifier):
             p_set, batch_size=p_batch_size,
             shuffle=True, num_workers=0)
 
-        sn_loader = torch.utils.data.DataLoader(
-            sn_set, batch_size=sn_batch_size,
-            shuffle=True, num_workers=0)
+        if self.rho != 0:
+            sn_loader = torch.utils.data.DataLoader(
+                sn_set, batch_size=sn_batch_size,
+                shuffle=True, num_workers=0)
+        else:
+            sn_loader = None
 
         u_loader = torch.utils.data.DataLoader(
             u_set, batch_size=u_batch_size,
@@ -351,7 +354,10 @@ class ClassifierFrom3(Classifier):
         for i, x in enumerate(p_loader):
             self.model.train()
             self.optimizer.zero_grad()
-            snx = next(iter(sn_loader))
+            if sn_loader is not None:
+                snx = next(iter(sn_loader))
+            else:
+                snx = None
             ux = next(iter(u_loader))
             loss, true_loss = self.compute_loss(x, snx, ux, convex)
             losses.append(true_loss.item())
@@ -388,7 +394,10 @@ class PUClassifier3(ClassifierFrom3):
         super().__init__(model, *args, **kwargs)
 
     def compute_loss(self, px, snx, ux, convex, validation=False):
-        px, snx, ux = px[0], snx[0], ux[0]
+        if self.rho != 0:
+            px, snx, ux = px[0], snx[0], ux[0]
+        else:
+            px, ux = px[0], ux[0]
         if validation:
             fpx = self.feed_in_batches(self.model, px)
             if self.rho != 0:
