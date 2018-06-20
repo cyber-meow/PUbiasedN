@@ -10,6 +10,7 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument('directory_path')
 parser.add_argument('--dataset', action='store', default='mnist')
+parser.add_argument('--save', action='store')
 
 args = parser.parse_args()
 dataset = args.dataset
@@ -23,7 +24,7 @@ def read_directory(dir_name):
     titles = ['test square error', 'test square error std',
               'test normalized square error',
               'test normalized square error std',
-              'test accuracy', 'test balanced accuracy', 'test auc score',
+              'Test Accuracy (%)', 'test balanced accuracy', 'test auc score',
               'test precision', 'test recall', 'test f1 score',
               'training loss', 'validation loss', 'validation ls loss',
               'validation logistic loss', 'validation sigmoid loss']
@@ -40,13 +41,15 @@ def read_directory(dir_name):
                         if curves[i] != []:
                             plot_or_not[i] = True
                             to_plot[d][i].append(curves[i])  # [:202])
-    for i in [1, 2, 3, 5, 7, 8, 10, 13, 14]:
+    for i in [2, 3, 5, 7, 8, 10, 13]:
         plot_or_not[i] = False
 
     for i in range(15):
         if plot_or_not[i]:
             plt.figure()
-            plt.title(titles[i])
+            plt.ylabel(titles[i])
+            plt.xlabel('Epoch')
+            plt.tight_layout()
             for lab in to_plot:
                 if plot_all:
                     for j, curve in enumerate(to_plot[lab][i]):
@@ -63,6 +66,9 @@ def read_directory(dir_name):
                             print(lab)
                             print(m[-1], s[-1])
             plt.legend()
+            if i == 4 and args.save is not None:
+                plt.ylim(ymin=80)
+                plt.savefig(args.save)
 
 
 def read_one_file(filename):
@@ -74,12 +80,12 @@ def read_one_file(filename):
     losses, val_losses = [], []
     val_ls_losses, val_log_losses, val_sig_losses = [], [], []
     for i, line in enumerate(content):
-        # if line == '\n':
-            # errs, err_stds, n_errs, n_err_stds = [], [], [], []
-            # accs, b_accs, aucs = [], [], []
-            # pres, recls, f1s = [], [], []
-            # losses, val_losses = [], []
-            # val_ls_losses, val_log_losses, val_sig_losses = [], [], []
+        if line == '\n':
+            errs, err_stds, n_errs, n_err_stds = [], [], [], []
+            accs, b_accs, aucs = [], [], []
+            pres, recls, f1s = [], [], []
+            losses, val_losses = [], []
+            val_ls_losses, val_log_losses, val_sig_losses = [], [], []
         if line.startswith('Test set: Error:'):
             a = line.split()
             errs.append(float(a[3]))

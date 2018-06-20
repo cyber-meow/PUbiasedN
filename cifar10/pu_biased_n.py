@@ -30,8 +30,8 @@ positive_classes = [0, 1, 8, 9]
 
 # neg_ps = [0, 0, 1/2, 0, 0, 0, 1/2, 0, 0, 0]
 # neg_ps = [1/4, 1/4, 0, 0, 0, 0, 0, 0, 1/4, 1/4]
-neg_ps = [0, 0, 0, 1/3, 0, 1/3, 0, 1/3, 0, 0]
-# neg_ps = [0, 0, 0.17, 0.3, 0.1, 0.3, 0.03, 0.1, 0, 0]
+# neg_ps = [0, 0, 0, 1/3, 0, 1/3, 0, 1/3, 0, 0]
+neg_ps = [0, 0, 0.17, 0.3, 0.1, 0.3, 0.03, 0.1, 0, 0]
 # neg_ps = [0, 0, 1/6, 1/6, 1/6, 1/6, 1/6, 1/6, 0, 0]
 
 
@@ -56,6 +56,7 @@ validation_momentum = 0
 
 lr_decrease_epoch = 60
 gamma = 0.1
+start_validation_epoch = 60
 
 non_negative = True
 nn_threshold = 0
@@ -114,6 +115,7 @@ params = OrderedDict([
     ('validation_momentum', validation_momentum),
     ('\nlr_decrease_epoch', lr_decrease_epoch),
     ('gamma', gamma),
+    ('start_validation_epoch', start_validation_epoch),
     ('\nnon_negative', non_negative),
     ('nn_threshold', nn_threshold),
     ('nn_rate', nn_rate),
