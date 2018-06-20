@@ -17,7 +17,6 @@ dataset = args.dataset
 
 def read_directory(dir_name):
 
-    plot_all = False
     to_plot = {}
 
     titles = ['test square error', 'test square error std',
@@ -27,7 +26,6 @@ def read_directory(dir_name):
               'test precision', 'test recall', 'test f1 score',
               'training loss', 'validation loss', 'validation ls loss',
               'validation logistic loss', 'validation sigmoid loss']
-    plot_or_not = [False for _ in range(15)]
 
     for d in listdir(dir_name):
         if d != 'ignored' and isdir(join(dir_name, d)):
@@ -35,34 +33,39 @@ def read_directory(dir_name):
             for f in listdir(join(dir_name, d)):
                 if isfile(join(dir_name, d, f)):
                     curves = read_one_file(join(dir_name, d, f))
-                    print(f)
                     for i in range(15):
                         if curves[i] != []:
-                            plot_or_not[i] = True
                             to_plot[d][i].append(curves[i])  # [:202])
-    for i in [1, 2, 3, 5, 7, 8, 10, 13, 14]:
-        plot_or_not[i] = False
 
-    for i in range(15):
-        if plot_or_not[i]:
-            plt.figure()
-            plt.title(titles[i])
-            for lab in to_plot:
-                if plot_all:
-                    for j, curve in enumerate(to_plot[lab][i]):
-                        plt.plot(curve, label='{}_{}'.format(lab, j))
-                else:
-                    if to_plot[lab][i] != []:
-                        m = np.mean(np.array(to_plot[lab][i]), axis=0)
-                        # m = scipy.ndimage.filters.gaussian_filter1d(m, 1)
-                        s = np.std(np.array(to_plot[lab][i]), axis=0)
-                        plt.plot(m, label=lab)
-                        plt.fill_between(
-                                np.arange(len(m)), m-s/2, m+s/2, alpha=0.5)
-                        if i == 4:
-                            print(lab)
-                            print(m[-1], s[-1])
-            plt.legend()
+    ms = [[] for _ in range(15)]
+    stds = [[] for _ in range(15)]
+    names = []
+
+    for lab in to_plot:
+        names.append(lab)
+        for i in [4, 6, 9]:
+            if to_plot[lab][i] != []:
+                m = np.mean(np.array(to_plot[lab][i]), axis=0)
+                s = np.std(np.array(to_plot[lab][i]), axis=0)
+                ms[i].append(m[-1])
+                stds[i].append(s[-1])
+
+    accs = np.array(ms[4])
+    sort_idxs = np.argsort(accs)
+
+    for j in sort_idxs:
+        print(names[j])
+        for i in [4, 6, 9]:
+            print(titles[i])
+            print(ms[i][j])
+
+    for i in [4, 6, 9]:
+        plt.figure()
+        plt.title(titles[i])
+        m = np.array(ms[i])[sort_idxs]
+        s = np.array(stds[i])[sort_idxs]
+        plt.plot(m)
+        plt.fill_between(np.arange(len(m)), m-s/2, m+s/2, alpha=0.5)
 
 
 def read_one_file(filename):

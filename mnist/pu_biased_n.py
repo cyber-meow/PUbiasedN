@@ -7,6 +7,8 @@ import torch.nn.functional as F
 import torchvision
 import torchvision.transforms as transforms
 
+import settings
+
 
 num_classes = 10
 
@@ -26,35 +28,39 @@ rho = 0.2
 
 positive_classes = [0, 2, 4, 6, 8]
 
-neg_ps = [0, 0.03, 0, 0.15, 0, 0.3, 0, 0.02, 0, 0.5]
+# neg_ps = [0, 0.03, 0, 0.15, 0, 0.3, 0, 0.02, 0, 0.5]
 # neg_ps = [0, 0.2, 0, 0.2, 0, 0.2, 0, 0.2, 0, 0.2]
-# neg_ps = [0, 1/3, 0, 1/3, 0, 1/3, 0, 0, 0, 0]
+neg_ps = [0, 1/3, 0, 1/3, 0, 1/3, 0, 0, 0, 0]
 # neg_ps = [1/6, 1/6, 1/6, 1/6, 0, 1/6, 1/6, 0, 0, 0]
 
 non_pu_fraction = 0.7
 balanced = False
 
-sep_value = 0.3
+u_per = 0.5
 adjust_p = False
 adjust_sn = True
 
 cls_training_epochs = 100
 convex_epochs = 100
 
-p_batch_size = 100
-sn_batch_size = 100
-u_batch_size = 1200
+p_batch_size = 10
+sn_batch_size = 10
+u_batch_size = 120
 
-learning_rate_cls = 1e-3
+learning_rate_ppe = 1e-3
+learning_rate_cls = 1e-2
 weight_decay = 1e-4
-validation_momentum = 0.5
+validation_momentum = 0
 
-lr_decrease_epoch = 60
-gamma = 0.1
+lr_decrease_epoch = 100
+gamma = 1
+start_validation_epoch = 0
 
 non_negative = True
 nn_threshold = 0
-nn_rate = 1/3
+nn_rate = 1
+
+settings.validation_interval = 50
 
 pu_prob_est = True
 use_true_post = False
@@ -93,7 +99,7 @@ params = OrderedDict([
     ('neg_ps', neg_ps),
     ('\nnon_pu_fraction', non_pu_fraction),
     ('balanced', balanced),
-    ('\nsep_value', sep_value),
+    ('\nu_per', u_per),
     ('adjust_p', adjust_p),
     ('adjust_sn', adjust_sn),
     ('\ncls_training_epochs', cls_training_epochs),
@@ -102,10 +108,12 @@ params = OrderedDict([
     ('sn_batch_size', sn_batch_size),
     ('u_batch_size', u_batch_size),
     ('\nlearning_rate_cls', learning_rate_cls),
+    ('learning_rate_ppe', learning_rate_ppe),
     ('weight_decay', weight_decay),
     ('validation_momentum', validation_momentum),
     ('\nlr_decrease_epoch', lr_decrease_epoch),
     ('gamma', gamma),
+    ('start_validation_epoch', start_validation_epoch),
     ('\nnon_negative', non_negative),
     ('nn_threshold', nn_threshold),
     ('nn_rate', nn_rate),

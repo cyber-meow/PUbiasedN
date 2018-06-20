@@ -11,57 +11,64 @@ import settings
 
 
 parser = argparse.ArgumentParser(description='UCI')
+
 parser.add_argument('--random-seed', type=int, default=0)
+parser.add_argument('--learning_rate', type=float, default=1e-3)
+parser.add_argument('--weight_decay', type=float, default=1e-2)
+parser.add_argument('--rho', type=float, default=0)
+parser.add_argument('--adjust_p', type=bool, default=True)
+
 args = parser.parse_args()
 
 
-dataset_path = 'data/UCI/stock.ord'
-train_num = 600
-test_num = 350
+dataset_path = 'data/UCI/cal_housing.ord'
+train_num = 10640
+test_num = 10000
 
 num_classes = 5
-num_input = 9
+num_input = 8
 
 p_num = 100
 n_num = 100
-sn_num = 60
-u_num = 300
+sn_num = 100
+u_num = 1000
 
 pv_num = 100
 nv_num = 100
-snv_num = 60
-uv_num = 300
+snv_num = 100
+uv_num = 1000
 
-u_cut = 300
+u_cut = 5000
 
-pi = 0.59
-rho = 0
+pi = 0.42
+rho = args.rho
 
-positive_classes = [2, 3, 4]
+positive_classes = [3, 4]
 
-neg_ps = [0, 1, 0, 0, 0]
+neg_ps = [0, 0, 1, 0, 0]
 
 non_pu_fraction = 0.5
 balanced = False
 
-sep_value = 0.5
-adjust_p = True
+u_per = 0.75
+adjust_p = args.adjust_p
 adjust_sn = True
 
-cls_training_epochs = 200
-convex_epochs = 200
+cls_training_epochs = 50
+convex_epochs = 50
 
 p_batch_size = 10
 n_batch_size = 10
-sn_batch_size = 6
-u_batch_size = 30
+sn_batch_size = 10
+u_batch_size = 100
 
-learning_rate_cls = 1e-3
-weight_decay = 1e-4
+learning_rate_cls = args.learning_rate
+weight_decay = args.weight_decay
 validation_momentum = 0
 
-lr_decrease_epoch = 100
-gamma = 0.1
+lr_decrease_epoch = 50
+gamma = 1
+start_validation_epoch = 0
 
 non_negative = True
 nn_threshold = 0
@@ -69,16 +76,16 @@ nn_rate = 1
 
 settings.validation_interval = 10
 
-pu_prob_est = False
-use_true_post = True
+pu_prob_est = True
+use_true_post = False
 
-partial_n = False
+partial_n = True
 hard_label = False
 
 iwpn = False
 pu = False
 pnu = False
-unbiased_pn = True
+unbiased_pn = False
 
 random_seed = args.random_seed
 
@@ -111,7 +118,7 @@ params = OrderedDict([
     ('neg_ps', neg_ps),
     ('\nnon_pu_fraction', non_pu_fraction),
     ('balanced', balanced),
-    ('\nsep_value', sep_value),
+    ('\nu_per', u_per),
     ('adjust_p', adjust_p),
     ('adjust_sn', adjust_sn),
     ('\ncls_training_epochs', cls_training_epochs),
@@ -125,6 +132,7 @@ params = OrderedDict([
     ('validation_momentum', validation_momentum),
     ('\nlr_decrease_epoch', lr_decrease_epoch),
     ('gamma', gamma),
+    ('start_validation_epoch', start_validation_epoch),
     ('\nnon_negative', non_negative),
     ('nn_threshold', nn_threshold),
     ('nn_rate', nn_rate),

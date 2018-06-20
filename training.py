@@ -17,7 +17,8 @@ class Training(object):
     def __init__(self, model=None,
                  lr=5e-3, weight_decay=1e-2,
                  validation_momentum=0.5,
-                 lr_decrease_epoch=100, gamma=0.1, balanced=False):
+                 lr_decrease_epoch=100, start_validation_epoch=100,
+                 gamma=0.1, balanced=False):
         self.times = 0
         self.model = model
         self.lr = lr
@@ -26,6 +27,7 @@ class Training(object):
         self.gamma = gamma
         self.balanced = balanced
         self.validation_momentum = validation_momentum
+        self.start_validation_epoch = start_validation_epoch
         self.min_vloss = float('inf')
         self.curr_accu_vloss = None
         self.final_model = None
@@ -48,7 +50,7 @@ class Training(object):
                 self.curr_accu_vloss * self.validation_momentum
                 + validation_loss.item() * (1-self.validation_momentum))
         if (self.curr_accu_vloss < self.min_vloss
-                and self.times > self.lr_decrease_epoch):
+                and self.times > self.start_validation_epoch):
             self.min_vloss = self.curr_accu_vloss
             self.final_model = deepcopy(self.model)
         return validation_loss
@@ -324,7 +326,7 @@ class ClassifierFrom3(Classifier):
 
         u_loader = torch.utils.data.DataLoader(
             u_set, batch_size=u_batch_size,
-            shuffle=True, num_workers=1)
+            shuffle=True, num_workers=0)
 
         for epoch in range(num_epochs):
 
@@ -460,7 +462,7 @@ class PUClassifier3(ClassifierFrom3):
                 self.curr_accu_vloss * self.validation_momentum
                 + ls_loss.cpu().item() * (1-self.validation_momentum))
         if (self.curr_accu_vloss < self.min_vloss
-                and self.times > self.lr_decrease_epoch):
+                and self.times > self.start_validation_epoch):
             self.min_vloss = self.curr_accu_vloss
             self.final_model = deepcopy(self.model)
         return ls_loss

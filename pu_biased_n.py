@@ -45,7 +45,7 @@ neg_ps = params['neg_ps']
 non_pu_fraction = params['\nnon_pu_fraction']
 balanced = params['balanced']
 
-sep_value = params['\nsep_value']
+u_per = params['\nu_per']
 adjust_p = params['adjust_p']
 adjust_sn = params['adjust_sn']
 
@@ -61,8 +61,18 @@ learning_rate_cls = params['\nlearning_rate_cls']
 weight_decay = params['weight_decay']
 validation_momentum = params['validation_momentum']
 
+if 'learning_rate_ppe' in params:
+    learning_rate_ppe = params['learning_rate_ppe']
+else:
+    learning_rate_ppe = learning_rate_cls
+
 lr_decrease_epoch = params['\nlr_decrease_epoch']
 gamma = params['gamma']
+
+if 'start_validation_epoch' in params:
+    start_validation_epoch = params['start_validation_epoch']
+else:
+    start_validation_epoch = lr_decrease_epoch
 
 non_negative = params['\nnon_negative']
 nn_threshold = params['nn_threshold']
@@ -98,6 +108,10 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
 
 parser.add_argument('--random-seed', type=int, default=0)
+parser.add_argument('--learning_rate', type=float, default=1e-3)
+parser.add_argument('--weight_decay', type=float, default=1e-4)
+parser.add_argument('--rho', type=float, default=0.2)
+parser.add_argument('--adjust_p', type=bool, default=True)
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -105,6 +119,7 @@ args.cuda = not args.no_cuda and torch.cuda.is_available()
 if args.random_seed is not None:
     params['\nrandom_seed'] = args.random_seed
     random_seed = args.random_seed
+
 
 settings.dtype = torch.cuda.FloatTensor if args.cuda else torch.FloatTensor
 
@@ -142,7 +157,7 @@ def pick_n_data(data, labels, n):
             n_idxs[(labels == i).numpy().astype(bool)] = 1
     n_idxs = np.argwhere(n_idxs == 1).reshape(-1)
     selected_n = np.random.choice(n_idxs, n, replace=False)
-    return data[selected_n], posteriors(labels[selected_n])
+    return data[selected_n], labels[selected_n]
 
 
 def pick_sn_data(data, labels, n):
@@ -224,10 +239,11 @@ if pu_prob_est and ppe_load_name is None:
     model = Net().cuda() if args.cuda else Net()
     ppe = training.PUClassifier3(
             model, pi=pi, rho=rho,
-            lr=learning_rate_cls, weight_decay=weight_decay,
+            lr=learning_rate_ppe, weight_decay=weight_decay,
             lr_decrease_epoch=lr_decrease_epoch, gamma=gamma,
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
-            prob_est=True, validation_momentum=validation_momentum)
+            prob_est=True, validation_momentum=validation_momentum,
+            start_validation_epoch=start_validation_epoch)
     ppe.train(p_set, sn_set, u_set, test_set,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
@@ -263,6 +279,10 @@ if (partial_n or (iwpn and (adjust_p or adjust_sn))) and not use_true_post:
         training.Training()
         .feed_in_batches(ppe_model, u_validation[0])).cpu()
 
+sep_value = np.percentile(
+    u_set.tensors[1].numpy().reshape(-1), int((1-pi-rho)*u_per*100))
+print('\nsep_value =', sep_value)
+
 
 if partial_n:
     print('')
@@ -273,7 +293,8 @@ if partial_n:
             adjust_p=adjust_p, adjust_sn=adjust_sn, hard_label=hard_label,
             lr=learning_rate_cls, weight_decay=weight_decay,
             lr_decrease_epoch=lr_decrease_epoch, gamma=gamma,
-            validation_momentum=validation_momentum)
+            validation_momentum=validation_momentum,
+            start_validation_epoch=start_validation_epoch)
     cls.train(p_set, sn_set, u_set, test_set,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
@@ -287,7 +308,8 @@ if iwpn:
             adjust_p=adjust_p, adjust_n=adjust_sn,
             lr=learning_rate_cls, weight_decay=weight_decay,
             lr_decrease_epoch=lr_decrease_epoch, gamma=gamma,
-            validation_momentum=validation_momentum)
+            validation_momentum=validation_momentum,
+            start_validation_epoch=start_validation_epoch)
     cls.train(p_set, sn_set, test_set, p_batch_size, sn_batch_size,
               p_validation, sn_validation,
               cls_training_epochs, convex_epochs=convex_epochs)
@@ -300,7 +322,8 @@ if pu:
             lr=learning_rate_cls, weight_decay=weight_decay,
             lr_decrease_epoch=lr_decrease_epoch, gamma=gamma,
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
-            validation_momentum=validation_momentum)
+            validation_momentum=validation_momentum,
+            start_validation_epoch=start_validation_epoch)
     cls.train(p_set, u_set, test_set, p_batch_size, u_batch_size,
               p_validation, u_validation,
               cls_training_epochs, convex_epochs=convex_epochs)
@@ -314,7 +337,8 @@ if pnu:
             lr_decrease_epoch=lr_decrease_epoch, gamma=gamma,
             pn_fraction=non_pu_fraction,
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
-            validation_momentum=validation_momentum)
+            validation_momentum=validation_momentum,
+            start_validation_epoch=start_validation_epoch)
     cls.train(p_set, sn_set, u_set, test_set,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
@@ -325,7 +349,8 @@ if unbiased_pn:
     model = Net().cuda() if args.cuda else Net()
     cls = training.PNClassifier(
             model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay,
-            lr_decrease_epoch=lr_decrease_epoch, gamma=gamma)
+            lr_decrease_epoch=lr_decrease_epoch, gamma=gamma,
+            start_validation_epoch=start_validation_epoch)
     cls.train(p_set, n_set, test_set, p_batch_size, n_batch_size,
               p_validation, n_validation,
               cls_training_epochs, convex_epochs=convex_epochs)
