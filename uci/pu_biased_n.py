@@ -6,6 +6,7 @@ import torch
 import torch.utils.data
 import torch.nn as nn
 import torch.nn.functional as F
+from sklearn import preprocessing
 
 import settings
 
@@ -13,20 +14,25 @@ import settings
 parser = argparse.ArgumentParser(description='UCI')
 
 parser.add_argument('--random-seed', type=int, default=0)
-parser.add_argument('--learning_rate', type=float, default=1e-3)
-parser.add_argument('--weight_decay', type=float, default=1e-2)
+parser.add_argument('--learning_rate', type=float, default=1e-2)
+parser.add_argument('--weight_decay', type=float, default=1e-4)
 parser.add_argument('--rho', type=float, default=0)
-parser.add_argument('--adjust_p', type=bool, default=True)
+parser.add_argument('--u_per', type=float, default=0.5)
+parser.add_argument('--gamma', type=float, default=0.5)
+parser.add_argument('--adjust_p', default=True)
 
 args = parser.parse_args()
 
+if args.adjust_p == 'False':
+    args.adjust_p = False
 
-dataset_path = 'data/UCI/cal_housing.ord'
-train_num = 10640
-test_num = 10000
 
-num_classes = 5
-num_input = 8
+dataset_path = 'data/UCI/cpu_act.ord'
+train_num = 4192
+test_num = 4000
+
+num_classes = 3
+num_input = 21
 
 p_num = 100
 n_num = 100
@@ -38,24 +44,25 @@ nv_num = 100
 snv_num = 100
 uv_num = 1000
 
-u_cut = 5000
+u_cut = 2192
 
-pi = 0.42
+pi = 0.47
 rho = args.rho
 
-positive_classes = [3, 4]
+positive_classes = [2]
 
-neg_ps = [0, 0, 1, 0, 0]
+neg_ps = [0, 1, 0]
 
-non_pu_fraction = 0.5
+
+non_pu_fraction = args.gamma
 balanced = False
 
-u_per = 0.75
+u_per = args.u_per
 adjust_p = args.adjust_p
 adjust_sn = True
 
-cls_training_epochs = 50
-convex_epochs = 50
+cls_training_epochs = 100
+convex_epochs = 100
 
 p_batch_size = 10
 n_batch_size = 10
@@ -66,7 +73,7 @@ learning_rate_cls = args.learning_rate
 weight_decay = args.weight_decay
 validation_momentum = 0
 
-lr_decrease_epoch = 50
+lr_decrease_epoch = 100
 gamma = 1
 start_validation_epoch = 0
 
@@ -76,14 +83,14 @@ nn_rate = 1
 
 settings.validation_interval = 10
 
-pu_prob_est = True
+pu_prob_est = False
 use_true_post = False
 
-partial_n = True
+partial_n = False
 hard_label = False
 
 iwpn = False
-pu = False
+pu = True
 pnu = False
 unbiased_pn = False
 
@@ -156,6 +163,7 @@ data = np.loadtxt(dataset_path)
 
 labels = data[:, -1] - 1
 data = data[:, :-1]
+data = preprocessing.scale(data)
 
 priors = []
 for i in range(num_classes):

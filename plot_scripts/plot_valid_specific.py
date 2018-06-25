@@ -162,4 +162,4 @@ def read_one_file(filename):
 
 
 read_directory(args.directory_path)
-plt.show()
+# plt.show()

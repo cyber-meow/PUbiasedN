@@ -1,9 +1,11 @@
 import argparse
 from os import listdir
 from os.path import isfile, isdir, join
+
 import numpy as np
 # import scipy.ndimage
 import matplotlib.pyplot as plt
+# from cycler import cycler
 
 
 parser = argparse.ArgumentParser()
@@ -41,8 +43,11 @@ def read_directory(dir_name):
                         if curves[i] != []:
                             plot_or_not[i] = True
                             to_plot[d][i].append(curves[i])  # [:202])
-    for i in [2, 3, 5, 7, 8, 10, 13]:
+    for i in [2, 3, 5, 7, 8, 10, 13, 14]:
         plot_or_not[i] = False
+
+    # plt.rc('axes', prop_cycle=(
+    #     cycler('color', ['#2ca02c', '#1f77b4', '#ff7f0e', '#d62728'])))
 
     for i in range(15):
         if plot_or_not[i]:
@@ -50,7 +55,7 @@ def read_directory(dir_name):
             plt.ylabel(titles[i])
             plt.xlabel('Epoch')
             plt.tight_layout()
-            for lab in to_plot:
+            for lab in sorted(to_plot.keys()):
                 if plot_all:
                     for j, curve in enumerate(to_plot[lab][i]):
                         plt.plot(curve, label='{}_{}'.format(lab, j))
@@ -64,7 +69,7 @@ def read_directory(dir_name):
                                 np.arange(len(m)), m-s/2, m+s/2, alpha=0.5)
                         if i == 4:
                             print(lab)
-                            print(m[-1], s[-1])
+                            print(m[-1], 100-m[-1], s[-1])
             plt.legend()
             if i == 4 and args.save is not None:
                 plt.ylim(ymin=80)
@@ -149,4 +154,4 @@ def read_one_file(filename):
 
 
 read_directory(args.directory_path)
-plt.show()
+# plt.show()

@@ -40,9 +40,11 @@ def read_directory(dir_name):
     ms = [[] for _ in range(15)]
     stds = [[] for _ in range(15)]
     names = []
+    print(len(to_plot))
 
     for lab in to_plot:
-        names.append(lab)
+        if to_plot[lab][4] != []:
+            names.append(lab)
         for i in [4, 6, 9]:
             if to_plot[lab][i] != []:
                 m = np.mean(np.array(to_plot[lab][i]), axis=0)
@@ -57,7 +59,7 @@ def read_directory(dir_name):
         print(names[j])
         for i in [4, 6, 9]:
             print(titles[i])
-            print(ms[i][j])
+            print(ms[i][j], stds[i][j])
 
     for i in [4, 6, 9]:
         plt.figure()

@@ -411,6 +411,7 @@ class PUClassifier3(ClassifierFrom3):
         else:
             fpx, fux = self.feed_together(self.model, px, ux)
         p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
+        fux_mean = torch.mean(F.sigmoid(fux))
         if self.rho != 0:
             sn_loss = self.rho * torch.mean(self.basic_loss(fsnx, convex))
             n_loss = (torch.mean(self.basic_loss(-fux, convex))
@@ -427,6 +428,8 @@ class PUClassifier3(ClassifierFrom3):
         print(n_loss.item())
         if self.nn and n_loss < self.nn_threshold:
             loss = -n_loss * self.nn_rate
+        loss += (fux_mean - self.pi - self.rho)**2
+        true_loss += (fux_mean - self.pi - self.rho)**2
         return loss.cpu(), true_loss.cpu()
 
     def average_loss(self, fx):
