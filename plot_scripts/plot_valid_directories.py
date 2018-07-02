@@ -43,7 +43,7 @@ def read_directory(dir_name):
                         if curves[i] != []:
                             plot_or_not[i] = True
                             to_plot[d][i].append(curves[i])  # [:202])
-    for i in [2, 3, 5, 7, 8, 10, 13, 14]:
+    for i in [2, 3, 5, 7, 8, 13, 14]:
         plot_or_not[i] = False
 
     # plt.rc('axes', prop_cycle=(
@@ -85,7 +85,7 @@ def read_one_file(filename):
     losses, val_losses = [], []
     val_ls_losses, val_log_losses, val_sig_losses = [], [], []
     for i, line in enumerate(content):
-        if line == '\n':
+        if line == '\n' and False:
             errs, err_stds, n_errs, n_err_stds = [], [], [], []
             accs, b_accs, aucs = [], [], []
             pres, recls, f1s = [], [], []
@@ -154,4 +154,4 @@ def read_one_file(filename):
 
 
 read_directory(args.directory_path)
-# plt.show()
+plt.show()

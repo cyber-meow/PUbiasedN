@@ -1,25 +1,19 @@
 #!/usr/bin/python
 
 import time
-import itertools
 from subprocess import call
 
 
-output_file_name = 'census_100P+100N(nnpnu)'
+output_file_name = 'bank_100P+100N'
 
-# lrs = [1e-2, 1e-3]
-lrs = [1e-3]
-# wds = [1e-2, 1e-3, 1e-4]
-wds = [1e-2]
-# rhos = [0.2, 0.3]
-rhos = [0]
-# upers = [0.5, 0.7, 0.9]
-upers = [0.7]
-# gammas = [0.1, 0.3, 0.5, 0.7, 0.9]
-gammas = [0.5]
+lr = 1e-3
+wd = 1e-2
+rho = 0.2
+uper = 0.7
+gamma = 0.5
+algo = 0
 
-for lr, wd, rho, uper, gamma, i in\
-        itertools.product(lrs, wds, rhos, upers, gammas, range(21, 71)):
+for i in range(21, 71):
 
     job_sub = open('job_sub.sh', 'w')
 
@@ -40,8 +34,8 @@ for lr, wd, rho, uper, gamma, i in\
     job_sub.write(
         '../anaconda3/bin/python pu_biased_n.py\
          --random-seed {} --learning_rate {} --weight_decay {}\
-         --rho {} --u_per {} --gamma {} --adjust_p True'
-        .format(i, lr, wd, rho, uper, gamma))
+         --rho {} --u_per {} --gamma {} --adjust_p True --algo {}'
+        .format(i, lr, wd, rho, uper, gamma, algo))
     job_sub.close()
     call(['qsub', 'job_sub.sh'])
     time.sleep(0.1)

@@ -24,7 +24,7 @@ u_cut = 40000
 
 pi = 0.49
 # pi = 0.097
-rho = 0.2
+rho = 0.3
 
 positive_classes = [0, 2, 4, 6, 8]
 
@@ -37,7 +37,7 @@ non_pu_fraction = 0.7
 balanced = False
 
 u_per = 0.5
-adjust_p = False
+adjust_p = True
 adjust_sn = True
 
 cls_training_epochs = 100
@@ -52,8 +52,6 @@ learning_rate_cls = 1e-2
 weight_decay = 1e-4
 validation_momentum = 0
 
-lr_decrease_epoch = 100
-gamma = 1
 start_validation_epoch = 0
 
 non_negative = True
@@ -62,12 +60,13 @@ nn_rate = 1
 
 settings.validation_interval = 50
 
-pu_prob_est = True
+pu_prob_est = False
 use_true_post = False
 
-partial_n = True
+partial_n = False
 hard_label = False
 
+pn_then_pu = True
 iwpn = False
 pu = False
 pnu = False
@@ -111,9 +110,7 @@ params = OrderedDict([
     ('learning_rate_ppe', learning_rate_ppe),
     ('weight_decay', weight_decay),
     ('validation_momentum', validation_momentum),
-    ('\nlr_decrease_epoch', lr_decrease_epoch),
-    ('gamma', gamma),
-    ('start_validation_epoch', start_validation_epoch),
+    ('\nstart_validation_epoch', start_validation_epoch),
     ('\nnon_negative', non_negative),
     ('nn_threshold', nn_threshold),
     ('nn_rate', nn_rate),
@@ -122,6 +119,7 @@ params = OrderedDict([
     ('\npartial_n', partial_n),
     ('hard_label', hard_label),
     ('\niwpn', iwpn),
+    ('pn_then_pu', pn_then_pu),
     ('pu', pu),
     ('pnu', pnu),
     ('\nrandom_seed', random_seed),

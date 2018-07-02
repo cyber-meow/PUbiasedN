@@ -17,14 +17,17 @@ class Training(object):
     def __init__(self, model=None,
                  lr=5e-3, weight_decay=1e-2,
                  validation_momentum=0.5,
-                 lr_decrease_epoch=100, start_validation_epoch=100,
-                 gamma=0.1, balanced=False):
+                 milestones=None, start_validation_epoch=100,
+                 lr_d=0.1, balanced=False):
         self.times = 0
         self.model = model
         self.lr = lr
         self.weight_decay = weight_decay
-        self.lr_decrease_epoch = lr_decrease_epoch
-        self.gamma = gamma
+        if milestones is None:
+            self.milestones = [1000]
+        else:
+            self.milestones = milestones
+        self.lr_d = lr_d
         self.balanced = balanced
         self.validation_momentum = validation_momentum
         self.start_validation_epoch = start_validation_epoch
@@ -37,8 +40,8 @@ class Training(object):
         self.optimizer = optim.Adam(
             self.model.parameters(),
             lr=self.lr, weight_decay=self.weight_decay, amsgrad=True)
-        self.scheduler = optim.lr_scheduler.StepLR(
-            self.optimizer, step_size=self.lr_decrease_epoch, gamma=self.gamma)
+        self.scheduler = optim.lr_scheduler.MultiStepLR(
+            self.optimizer, milestones=self.milestones, gamma=self.lr_d)
 
     def validation(self, *args):
         _, validation_loss = self.compute_loss(*args, validation=True)
@@ -256,12 +259,15 @@ class PNClassifier(ClassifierFrom2):
 
 class PUClassifier(ClassifierFrom2):
 
-    def __init__(self, model,
+    def __init__(self, model, pn_model=None,
                  nn=True, nn_threshold=0, nn_rate=1/100, prob_est=False,
                  *args, **kwargs):
         self.nn_rate = nn_rate
         self.nn_threshold = nn_threshold
         self.nn = nn
+        if pn_model is not None:
+            self.pn_model = pn_model
+            self.test = self.test_two_stage
         if prob_est:
             self.test = self.test_prob_est
         super().__init__(model, *args, **kwargs)
@@ -295,6 +301,18 @@ class PUClassifier(ClassifierFrom2):
         error = torch.mean((target-output)**2).item()
         if to_print:
             print('Test set: Error: {}'.format(error), flush=True)
+
+    def test_two_stage(self, test_set, to_print=True):
+        x = test_set.tensors[0]
+        labels = test_set.tensors[1]
+        output1 = self.feed_in_batches(
+            self.pn_model, x, settings.test_batch_size)
+        pred1 = torch.sign(output1)
+        output2 = self.feed_in_batches(
+            self.model, x, settings.test_batch_size)
+        pred = torch.sign(output2)
+        pred[pred1 == -1] = -1
+        self.compute_classification_metrics(labels, pred, to_print=to_print)
 
 
 class ClassifierFrom3(Classifier):
@@ -411,7 +429,7 @@ class PUClassifier3(ClassifierFrom3):
         else:
             fpx, fux = self.feed_together(self.model, px, ux)
         p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
-        fux_mean = torch.mean(F.sigmoid(fux))
+        # fux_mean = torch.mean(F.sigmoid(fux))
         if self.rho != 0:
             sn_loss = self.rho * torch.mean(self.basic_loss(fsnx, convex))
             n_loss = (torch.mean(self.basic_loss(-fux, convex))
@@ -428,8 +446,8 @@ class PUClassifier3(ClassifierFrom3):
         print(n_loss.item())
         if self.nn and n_loss < self.nn_threshold:
             loss = -n_loss * self.nn_rate
-        loss += (fux_mean - self.pi - self.rho)**2
-        true_loss += (fux_mean - self.pi - self.rho)**2
+        # loss += (fux_mean - self.pi - self.rho)**2
+        # true_loss += (fux_mean - self.pi - self.rho)**2
         return loss.cpu(), true_loss.cpu()
 
     def average_loss(self, fx):
@@ -469,6 +487,15 @@ class PUClassifier3(ClassifierFrom3):
             self.min_vloss = self.curr_accu_vloss
             self.final_model = deepcopy(self.model)
         return ls_loss
+
+    def test(self, test_set, to_print=True):
+        x = test_set.tensors[0]
+        target = test_set.tensors[2]
+        labels = torch.ones_like(target)
+        labels[target < 1/2] = -1
+        output = self.feed_in_batches(self.model, x, settings.test_batch_size)
+        pred = torch.sign(output)
+        self.compute_classification_metrics(labels, pred, output, to_print)
 
     def test_prob_est(self, test_set, to_print=True):
         x = test_set.tensors[0]
@@ -514,12 +541,11 @@ class PNUClassifier(ClassifierFrom3):
         n_loss = (1-self.pi) * torch.mean(self.basic_loss(-fnx, convex))
         n_loss2 = (torch.mean(self.basic_loss(-fux, convex))
                    - self.pi * torch.mean(self.basic_loss(-fpx, convex)))
-        true_loss = (
-            p_loss + n_loss * self.pn_fraction
-            + n_loss2 * (1-self.pn_fraction))
+        n_loss = n_loss * self.pn_fraction + n_loss2 * (1-self.pn_fraction)
+        true_loss = p_loss + n_loss
         loss = true_loss
-        if self.nn and n_loss2 < self.nn_threshold:
-            loss = -n_loss2 * self.nn_rate
+        if self.nn and n_loss < self.nn_threshold:
+            loss = -n_loss * self.nn_rate
         return loss.cpu(), true_loss.cpu()
 
 
@@ -532,6 +558,8 @@ class WeightedClassifier(ClassifierFrom3):
         self.adjust_p = adjust_p
         self.adjust_sn = adjust_sn
         self.hard_label = hard_label
+        self.a = torch.tensor(20., requires_grad=True, device='cuda')
+        self.b = torch.tensor(10., requires_grad=True, device='cuda')
         super().__init__(model, *args, **kwargs)
 
     def train(self, p_set, sn_set, u_set, *args, **kwargs):
@@ -539,6 +567,10 @@ class WeightedClassifier(ClassifierFrom3):
         print('Number of used unlabeled samples:',
               torch.sum(fux_prob <= self.sep_value).item())
         super().train(p_set, sn_set, u_set, *args, **kwargs)
+        # print(self.a, self.b)
+
+    def distribute(self, px):
+        return 1/(1+torch.exp(self.a*px-self.b))
 
     def compute_loss(self, px, snx, ux, convex, validation=False):
 
@@ -562,6 +594,7 @@ class WeightedClassifier(ClassifierFrom3):
             p_loss = self.pi * torch.mean(
                 self.basic_loss(fpx, convex)
                 + self.basic_loss(-fpx, convex) * (1-fpx_prob)/fpx_prob)
+            # * (1-fpx_prob)/fpx_prob*(1-self.distribute(fpx_prob)))
         else:
             p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
 
@@ -571,6 +604,10 @@ class WeightedClassifier(ClassifierFrom3):
                 fsnx_prob[fsnx_prob <= self.sep_value] = 1
                 sn_loss = self.rho * torch.mean(
                     self.basic_loss(-fsnx, convex) / fsnx_prob)
+                # sn_loss = self.rho * torch.mean(
+                #     self.basic_loss(-fsnx, convex)
+                #     * (1 + (1-fsnx_prob)
+                #         / fsnx_prob*(1-self.distribute(fsnx_prob))))
             else:
                 sn_loss = self.rho * torch.mean(self.basic_loss(-fsnx, convex))
 
@@ -579,7 +616,8 @@ class WeightedClassifier(ClassifierFrom3):
                 self.basic_loss(-fux, convex)) / len(ux[0])
         else:
             u_loss = torch.sum(
-                self.basic_loss(-fux, convex)*(1-fux_prob)) / len(ux[0])
+                self.basic_loss(-fux, convex)*(1-fux_prob)/len(ux[0]))
+            # * self.distribute(fux_prob)) / len(ux[0])
 
         if self.balanced:
             p_loss = p_loss/self.pi
@@ -591,6 +629,11 @@ class WeightedClassifier(ClassifierFrom3):
         else:
             loss = p_loss + sn_loss + u_loss
         return loss.cpu(), loss.cpu()
+
+    def test(self, *args, **kwargs):
+        super().test(*args, **kwargs)
+        # print('a', self.a)
+        # print('b', self.b)
 
 
 class ThreeClassifier(ClassifierFrom3):

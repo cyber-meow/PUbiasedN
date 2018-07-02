@@ -66,13 +66,9 @@ if 'learning_rate_ppe' in params:
 else:
     learning_rate_ppe = learning_rate_cls
 
-lr_decrease_epoch = params['\nlr_decrease_epoch']
-gamma = params['gamma']
-
-if 'start_validation_epoch' in params:
-    start_validation_epoch = params['start_validation_epoch']
-else:
-    start_validation_epoch = lr_decrease_epoch
+start_validation_epoch = params.get('\nstart_validation_epoch', 0)
+milestones = params.get('milestones', [1000])
+lr_d = params.get('lr_d', 1)
 
 non_negative = params['\nnon_negative']
 nn_threshold = params['nn_threshold']
@@ -83,6 +79,9 @@ use_true_post = params['use_true_post']
 
 partial_n = params['\npartial_n']
 hard_label = params['hard_label']
+
+pn_then_pu = params.get('pn_then_pu', False)
+pu_then_pn = params.get('pu_then_pn', False)
 
 iwpn = params['\niwpn']
 pu = params['pu']
@@ -114,6 +113,7 @@ parser.add_argument('--rho', type=float, default=0.2)
 parser.add_argument('--u_per', type=float, default=0.5)
 parser.add_argument('--gamma', type=float, default=0.5)
 parser.add_argument('--adjust_p', default=True)
+parser.add_argument('--algo', type=int, default=0)
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -242,8 +242,8 @@ if pu_prob_est and ppe_load_name is None:
     ppe = training.PUClassifier3(
             model, pi=pi, rho=rho,
             lr=learning_rate_ppe, weight_decay=weight_decay,
-            lr_decrease_epoch=lr_decrease_epoch, gamma=gamma,
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
+            milestones=milestones, lr_d=lr_d,
             prob_est=True, validation_momentum=validation_momentum,
             start_validation_epoch=start_validation_epoch)
     ppe.train(p_set, sn_set, u_set, test_set,
@@ -294,7 +294,7 @@ if partial_n:
             sep_value=sep_value,
             adjust_p=adjust_p, adjust_sn=adjust_sn, hard_label=hard_label,
             lr=learning_rate_cls, weight_decay=weight_decay,
-            lr_decrease_epoch=lr_decrease_epoch, gamma=gamma,
+            milestones=milestones, lr_d=lr_d,
             validation_momentum=validation_momentum,
             start_validation_epoch=start_validation_epoch)
     cls.train(p_set, sn_set, u_set, test_set,
@@ -309,12 +309,63 @@ if iwpn:
             model, pi=pi/(pi+rho),
             adjust_p=adjust_p, adjust_n=adjust_sn,
             lr=learning_rate_cls, weight_decay=weight_decay,
-            lr_decrease_epoch=lr_decrease_epoch, gamma=gamma,
+            milestones=milestones, lr_d=lr_d,
             validation_momentum=validation_momentum,
             start_validation_epoch=start_validation_epoch)
     cls.train(p_set, sn_set, test_set, p_batch_size, sn_batch_size,
               p_validation, sn_validation,
               cls_training_epochs, convex_epochs=convex_epochs)
+
+if pn_then_pu:
+    print('')
+    model = Net().cuda() if args.cuda else Net()
+    cls = training.PNClassifier(
+            model, pi=pi/(pi+rho),
+            lr=learning_rate_cls, weight_decay=weight_decay,
+            milestones=milestones, lr_d=lr_d,
+            validation_momentum=validation_momentum,
+            start_validation_epoch=start_validation_epoch)
+    cls.train(p_set, sn_set, test_set, p_batch_size, sn_batch_size,
+              p_validation, sn_validation,
+              cls_training_epochs, convex_epochs=convex_epochs)
+    print('')
+    model = Net().cuda() if args.cuda else Net()
+    cls2 = training.PUClassifier(
+            model, pn_model=cls.model, pi=pi, balanced=balanced,
+            lr=learning_rate_cls, weight_decay=weight_decay,
+            milestones=milestones, lr_d=lr_d,
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
+            validation_momentum=validation_momentum,
+            start_validation_epoch=start_validation_epoch)
+    cls2.train(p_set, u_set, test_set, p_batch_size, u_batch_size,
+               p_validation, u_validation,
+               cls_training_epochs, convex_epochs=convex_epochs)
+
+if pu_then_pn:
+    print('')
+    model = Net().cuda() if args.cuda else Net()
+    cls = training.PUClassifier3(
+            model, pi=pi, rho=rho,
+            lr=learning_rate_cls, weight_decay=weight_decay,
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
+            milestones=milestones, lr_d=lr_d,
+            validation_momentum=validation_momentum,
+            start_validation_epoch=start_validation_epoch)
+    cls.train(p_set, sn_set, u_set, test_set,
+              p_batch_size, sn_batch_size, u_batch_size,
+              p_validation, sn_validation, u_validation,
+              cls_training_epochs, convex_epochs=convex_epochs)
+
+    print('')
+    model = Net().cuda() if args.cuda else Net()
+    cls2 = training.PNClassifier(
+            model, pi=pi/(pi+rho), pu_model=cls.model,
+            lr=learning_rate_cls, weight_decay=weight_decay,
+            milestones=milestones, lr_d=lr_d,
+            start_validation_epoch=start_validation_epoch)
+    cls2.train(p_set, sn_set, test_set, p_batch_size, sn_batch_size,
+               p_validation, sn_validation,
+               cls_training_epochs, convex_epochs=convex_epochs)
 
 if pu:
     print('')
@@ -322,7 +373,7 @@ if pu:
     cls = training.PUClassifier(
             model, pi=pi, balanced=balanced,
             lr=learning_rate_cls, weight_decay=weight_decay,
-            lr_decrease_epoch=lr_decrease_epoch, gamma=gamma,
+            milestones=milestones, lr_d=lr_d,
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
             validation_momentum=validation_momentum,
             start_validation_epoch=start_validation_epoch)
@@ -336,7 +387,7 @@ if pnu:
     cls = training.PNUClassifier(
             model, pi=pi,
             lr=learning_rate_cls, weight_decay=weight_decay,
-            lr_decrease_epoch=lr_decrease_epoch, gamma=gamma,
+            milestones=milestones, lr_d=lr_d,
             pn_fraction=non_pu_fraction,
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
             validation_momentum=validation_momentum,
@@ -351,8 +402,8 @@ if unbiased_pn:
     model = Net().cuda() if args.cuda else Net()
     cls = training.PNClassifier(
             model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay,
-            lr_decrease_epoch=lr_decrease_epoch, gamma=gamma,
+            milestones=milestones, lr_d=lr_d,
             start_validation_epoch=start_validation_epoch)
-    cls.train(p_set, n_set, test_set, p_batch_size, n_batch_size,
-              p_validation, n_validation,
+    cls.train(p_set, sn_set, test_set, p_batch_size, sn_batch_size,
+              p_validation, sn_validation,
               cls_training_epochs, convex_epochs=convex_epochs)

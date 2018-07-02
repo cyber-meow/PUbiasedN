@@ -22,7 +22,7 @@ uv_num = 2000
 u_cut = 40000
 
 pi = 0.4
-rho = 0.2
+rho = 0.3
 
 # positive_classes = [3, 4, 5, 7]
 # positive_classes = [1]
@@ -30,8 +30,8 @@ positive_classes = [0, 1, 8, 9]
 
 # neg_ps = [0, 0, 1/2, 0, 0, 0, 1/2, 0, 0, 0]
 # neg_ps = [0, 1/2, 0, 0, 0, 0, 0, 0, 0, 1/2]
-# neg_ps = [0, 0, 0, 1/3, 0, 1/3, 0, 1/3, 0, 0]
-neg_ps = [0, 0, 0.17, 0.3, 0.1, 0.3, 0.03, 0.1, 0, 0]
+neg_ps = [0, 0, 0, 1/3, 0, 1/3, 0, 1/3, 0, 0]
+# neg_ps = [0, 0, 0.1, 0.02, 0.2, 0.08, 0.2, 0.4, 0, 0]
 # neg_ps = [0, 0, 1/6, 1/6, 1/6, 1/6, 1/6, 1/6, 0, 0]
 
 
@@ -39,24 +39,24 @@ non_pu_fraction = 0.5
 balanced = False
 
 u_per = 0.5
-adjust_p = False
+adjust_p = True
 adjust_sn = True
 
 cls_training_epochs = 200
 convex_epochs = 200
 
-p_batch_size = 100
-sn_batch_size = 100
-u_batch_size = 1000
+p_batch_size = 10
+sn_batch_size = 10
+u_batch_size = 100
 
 learning_rate_ppe = 1e-3
 learning_rate_cls = 1e-3
 weight_decay = 1e-4
 validation_momentum = 0
 
-lr_decrease_epoch = 60
-gamma = 0.1
-start_validation_epoch = 60
+start_validation_epoch = 0
+milestones = [80, 120]
+lr_d = 0.1
 
 non_negative = True
 nn_threshold = 0
@@ -83,7 +83,7 @@ ppe_save_name = None
 ppe_load_name = None
 
 settings.test_batch_size = 500
-settings.validation_interval = 5
+settings.validation_interval = 100
 
 
 params = OrderedDict([
@@ -113,9 +113,9 @@ params = OrderedDict([
     ('learning_rate_ppe', learning_rate_ppe),
     ('weight_decay', weight_decay),
     ('validation_momentum', validation_momentum),
-    ('\nlr_decrease_epoch', lr_decrease_epoch),
-    ('gamma', gamma),
-    ('start_validation_epoch', start_validation_epoch),
+    ('\nstart_validation_epoch', start_validation_epoch),
+    ('milestones', milestones),
+    ('lr_d', lr_d),
     ('\nnon_negative', non_negative),
     ('nn_threshold', nn_threshold),
     ('nn_rate', nn_rate),

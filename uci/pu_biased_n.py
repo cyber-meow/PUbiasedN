@@ -14,44 +14,46 @@ import settings
 parser = argparse.ArgumentParser(description='UCI')
 
 parser.add_argument('--random-seed', type=int, default=0)
-parser.add_argument('--learning_rate', type=float, default=1e-2)
-parser.add_argument('--weight_decay', type=float, default=1e-4)
+parser.add_argument('--learning_rate', type=float, default=1e-3)
+parser.add_argument('--weight_decay', type=float, default=1e-2)
 parser.add_argument('--rho', type=float, default=0)
 parser.add_argument('--u_per', type=float, default=0.5)
 parser.add_argument('--gamma', type=float, default=0.5)
 parser.add_argument('--adjust_p', default=True)
+parser.add_argument('--algo', default=0)
 
 args = parser.parse_args()
+args.algo = int(args.algo)
 
 if args.adjust_p == 'False':
     args.adjust_p = False
 
 
-dataset_path = 'data/UCI/cpu_act.ord'
+dataset_path = 'data/UCI/bank32nh.ord'
 train_num = 4192
 test_num = 4000
 
-num_classes = 3
-num_input = 21
+num_classes = 5
+num_input = 32
 
 p_num = 100
 n_num = 100
 sn_num = 100
-u_num = 1000
+u_num = 400
 
 pv_num = 100
 nv_num = 100
 snv_num = 100
-uv_num = 1000
+uv_num = 400
 
-u_cut = 2192
+u_cut = 2100
 
-pi = 0.47
+pi = 0.4
 rho = args.rho
 
-positive_classes = [2]
+positive_classes = [3, 4]
 
-neg_ps = [0, 1, 0]
+neg_ps = [0, 0, 1, 0, 0]
 
 
 non_pu_fraction = args.gamma
@@ -61,20 +63,18 @@ u_per = args.u_per
 adjust_p = args.adjust_p
 adjust_sn = True
 
-cls_training_epochs = 100
-convex_epochs = 100
+cls_training_epochs = 50
+convex_epochs = 50
 
 p_batch_size = 10
 n_batch_size = 10
 sn_batch_size = 10
-u_batch_size = 100
+u_batch_size = 40
 
 learning_rate_cls = args.learning_rate
 weight_decay = args.weight_decay
 validation_momentum = 0
 
-lr_decrease_epoch = 100
-gamma = 1
 start_validation_epoch = 0
 
 non_negative = True
@@ -83,15 +83,15 @@ nn_rate = 1
 
 settings.validation_interval = 10
 
-pu_prob_est = False
+pu_prob_est = args.algo == 0
 use_true_post = False
 
-partial_n = False
+partial_n = args.algo == 0
 hard_label = False
 
 iwpn = False
-pu = True
-pnu = False
+pu = args.algo == 1
+pnu = args.algo == 2
 unbiased_pn = False
 
 random_seed = args.random_seed
@@ -137,9 +137,7 @@ params = OrderedDict([
     ('\nlearning_rate_cls', learning_rate_cls),
     ('weight_decay', weight_decay),
     ('validation_momentum', validation_momentum),
-    ('\nlr_decrease_epoch', lr_decrease_epoch),
-    ('gamma', gamma),
-    ('start_validation_epoch', start_validation_epoch),
+    ('\nstart_validation_epoch', start_validation_epoch),
     ('\nnon_negative', non_negative),
     ('nn_threshold', nn_threshold),
     ('nn_rate', nn_rate),
