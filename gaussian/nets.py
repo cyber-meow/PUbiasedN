@@ -38,18 +38,18 @@ class Net(nn.Module):
         super(Net, self).__init__()
         self.sigmoid_output = sigmoid_output
         self.linear1 = nn.Linear(2, 10)
-        self.linear2 = nn.Linear(10, 5)
-        self.linear3 = nn.Linear(5, 1)
+        self.linear2 = nn.Linear(10, 1)
+        # self.linear3 = nn.Linear(5, 1)
         # self.linear4 = nn.Linear(5, 1)
 
     def forward(self, x):
         x = F.relu(self.linear1(x))
-        x = F.relu(self.linear2(x))
+        # x = F.relu(self.linear2(x))
         # x = F.relu(self.linear3(x))
         if self.sigmoid_output:
-            x = F.sigmoid(self.linear3(x))
+            x = F.sigmoid(self.linear2(x))
         else:
-            x = self.linear3(x)
+            x = self.linear2(x)
         return x
 
     def border_func(self, x, y):

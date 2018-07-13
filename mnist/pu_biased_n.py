@@ -12,13 +12,13 @@ import settings
 
 num_classes = 10
 
-p_num = 500
-sn_num = 500
-u_num = 6000
+p_num = 1000
+sn_num = 1000
+u_num = 12000
 
-pv_num = 100
-snv_num = 100
-uv_num = 1200
+pv_num = 200
+snv_num = 200
+uv_num = 2400
 
 u_cut = 40000
 
@@ -36,7 +36,7 @@ neg_ps = [0, 1/3, 0, 1/3, 0, 1/3, 0, 0, 0, 0]
 non_pu_fraction = 0.7
 balanced = False
 
-u_per = 0.5
+u_per = 0.7
 adjust_p = True
 adjust_sn = True
 
@@ -48,7 +48,7 @@ sn_batch_size = 10
 u_batch_size = 120
 
 learning_rate_ppe = 1e-3
-learning_rate_cls = 1e-2
+learning_rate_cls = 1e-3
 weight_decay = 1e-4
 validation_momentum = 0
 
@@ -66,7 +66,8 @@ use_true_post = False
 partial_n = False
 hard_label = False
 
-pn_then_pu = True
+pn_then_pu = False
+pu_then_pn = True
 iwpn = False
 pu = False
 pnu = False
@@ -120,6 +121,7 @@ params = OrderedDict([
     ('hard_label', hard_label),
     ('\niwpn', iwpn),
     ('pn_then_pu', pn_then_pu),
+    ('pu_then_pn', pu_then_pn),
     ('pu', pu),
     ('pnu', pnu),
     ('\nrandom_seed', random_seed),

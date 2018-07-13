@@ -17,7 +17,7 @@ class Training(object):
     def __init__(self, model=None,
                  lr=5e-3, weight_decay=1e-2,
                  validation_momentum=0.5,
-                 milestones=None, start_validation_epoch=100,
+                 milestones=None, start_validation_epoch=0,
                  lr_d=0.1, balanced=False):
         self.times = 0
         self.model = model
@@ -100,6 +100,8 @@ class Training(object):
         # Return result for each class
         precision, recall, f1_score, _ =\
             sklearn.metrics.precision_recall_fscore_support(target, pred)
+        n_negative = np.sum(target == 0)
+        n_false_positive = np.sum(np.logical_and(pred == 1, target == 0))
         if to_print:
             print('Test set: Accuracy: {:.2f}%'
                   .format(accuracy*100), flush=True)
@@ -114,6 +116,8 @@ class Training(object):
                   .format(recall[1]*100), flush=True)
             print('Test set: F1 Score: {:.2f}%'
                   .format(f1_score[1]*100), flush=True)
+            print('Test set: False Positive Rate: {:.2f}%'
+                  .format(n_false_positive/n_negative*100), flush=True)
 
     def train(self, *args):
         raise NotImplementedError
@@ -393,8 +397,11 @@ class ClassifierFrom3(Classifier):
         fpx = self.feed_in_batches(self.model, px)
         fux = self.feed_in_batches(self.model, ux)
         p_loss = self.pi * torch.mean(self.basic_loss(fpx, False))
+        # p_loss = self.pi * torch.mean((fpx <= 0).float())
         n_loss = (torch.mean(self.basic_loss(-fux, False))
                   - self.pi * torch.mean(self.basic_loss(-fpx, False)))
+        # n_loss = (torch.mean((fux > 0).float())
+        #           - self.pi * torch.mean((fpx > 0).float()))
         loss = p_loss + n_loss
         return loss.cpu(), loss.cpu()
 
@@ -424,10 +431,11 @@ class PUClassifier3(ClassifierFrom3):
                 fsnx = self.feed_in_batches(self.model, snx)
             fux = self.feed_in_batches(self.model, ux)
             convex = False
-        if self.rho != 0:
-            fpx, fsnx, fux = self.feed_together(self.model, px, snx, ux)
         else:
-            fpx, fux = self.feed_together(self.model, px, ux)
+            if self.rho != 0:
+                fpx, fsnx, fux = self.feed_together(self.model, px, snx, ux)
+            else:
+                fpx, fux = self.feed_together(self.model, px, ux)
         p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
         # fux_mean = torch.mean(F.sigmoid(fux))
         if self.rho != 0:
@@ -458,8 +466,7 @@ class PUClassifier3(ClassifierFrom3):
         return torch.tensor([logistic_loss, sigmoid_loss])
 
     def validation_prob_est(self, p_val, sn_val, u_val, convex):
-        if len(p_val) == 2:
-            p_val, sn_val, u_val = p_val[0], sn_val[0], u_val[0]
+        p_val, sn_val, u_val = p_val[0], sn_val[0], u_val[0]
         fpx = self.feed_in_batches(self.model, p_val)
         fsnx = self.feed_in_batches(self.model, sn_val)
         fux = self.feed_in_batches(self.model, u_val)

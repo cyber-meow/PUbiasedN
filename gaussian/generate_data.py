@@ -76,22 +76,22 @@ class TwoGaussian(object):
             self.observed_negative_samples.extend(observed)
         return np.array(observed)
 
-    def plot_samples(self, **kwargs):
+    def plot_samples(self, s=3, **kwargs):
         if self.unlabeled_samples != []:
             ux, uy = np.array(self.unlabeled_samples).T
-            plt.scatter(ux, uy, color='greenyellow', s=3, alpha=0.5,
+            plt.scatter(ux, uy, color='greenyellow', s=s, alpha=0.5,
                         label='unlabeled', **kwargs)
         if self.positive_samples != []:
             px, py = np.array(self.positive_samples).T
-            plt.scatter(px, py, color='salmon', s=3, alpha=0.5,
+            plt.scatter(px, py, color='salmon', s=s, alpha=0.5,
                         label='positive', **kwargs)
         if self.negative_samples != []:
             nx, ny = np.array(self.negative_samples).T
-            plt.scatter(nx, ny, color='turquoise', s=3, alpha=0.5,
+            plt.scatter(nx, ny, color='turquoise', s=s, alpha=0.5,
                         label='negative', **kwargs)
         if self.observed_negative_samples != []:
             onx, ony = np.array(self.observed_negative_samples).T
-            plt.scatter(onx, ony, color='navy', s=3, alpha=0.5,
+            plt.scatter(onx, ony, color='navy', s=s, alpha=0.5,
                         label='observed negative', **kwargs)
 
     def clear_samples(self):
@@ -105,10 +105,10 @@ class ThreeGaussian(object):
 
     def __init__(self, **kwargs):
         self.mu1 = np.array([0, 0])
-        self.mu2 = np.array([1.5, 2])
+        self.mu2 = np.array([1.5, 1.5])
         self.mu3 = np.array([-5, -5])
         self.cov = np.array([[1, 0], [0, 1]])
-        self.on1_prob = 0.8
+        self.on1_prob = 1
         self.positive_samples = []
         self.negative_samples = []
         self.unlabeled_samples = []
@@ -165,23 +165,23 @@ class ThreeGaussian(object):
             self.observed_negative_samples.extend(drawn)
         return drawn
 
-    def plot_samples(self, **kwargs):
+    def plot_samples(self, s=3, **kwargs):
         if self.unlabeled_samples != []:
             ux, uy = np.array(self.unlabeled_samples).T
-            plt.scatter(ux, uy, color='greenyellow', s=3, alpha=0.5,
+            plt.scatter(ux, uy, color='olivedrab', s=s, alpha=0.5,
                         label='unlabeled', **kwargs)
         if self.positive_samples != []:
             px, py = np.array(self.positive_samples).T
-            plt.scatter(px, py, color='salmon', s=3, alpha=0.5,
+            plt.scatter(px, py, color='tomato', s=s, alpha=0.5,
                         label='positive', **kwargs)
         if self.negative_samples != []:
             nx, ny = np.array(self.negative_samples).T
-            plt.scatter(nx, ny, color='turquoise', s=3, alpha=0.5,
+            plt.scatter(nx, ny, color='dodgerblue', s=s, alpha=0.5,
                         label='negative', **kwargs)
         if self.observed_negative_samples != []:
             onx, ony = np.array(self.observed_negative_samples).T
-            plt.scatter(onx, ony, color='navy', s=3, alpha=0.5,
-                        label='observed negative', **kwargs)
+            plt.scatter(onx, ony, color='navy', s=s, alpha=0.5,
+                        label='labeled negative', **kwargs)
 
     def clear_samples(self):
         self.positive_samples = []

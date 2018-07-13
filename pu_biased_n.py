@@ -38,6 +38,7 @@ u_cut = params['\nu_cut']
 
 pi = params['\npi']
 rho = params['rho']
+true_rho = params.get('true_rho', rho)
 
 positive_classes = params['\npositive_classes']
 neg_ps = params['neg_ps']
@@ -89,9 +90,6 @@ pnu = params['pnu']
 unbiased_pn = params.get('unbiased_pn', False)
 
 random_seed = params['\nrandom_seed']
-
-sets_save_name = params['\nsets_save_name']
-sets_load_name = params['sets_load_name']
 
 ppe_save_name = params['ppe_save_name']
 ppe_load_name = params['ppe_load_name']
@@ -189,34 +187,21 @@ train_data = train_data[idxs][:u_cut]
 train_labels = train_labels[idxs][:u_cut]
 
 
-if sets_load_name is None:
+u_set = torch.utils.data.TensorDataset(
+    *pick_u_data(train_data, train_labels, u_num))
+u_validation = pick_u_data(valid_data, valid_labels, uv_num)
 
-    u_set = torch.utils.data.TensorDataset(
-        *pick_u_data(train_data, train_labels, u_num))
-    u_validation = pick_u_data(valid_data, valid_labels, uv_num)
+p_set = torch.utils.data.TensorDataset(
+    *pick_p_data(train_data, train_labels, p_num))
+p_validation = pick_p_data(valid_data, valid_labels, pv_num)
 
-    p_set = torch.utils.data.TensorDataset(
-        *pick_p_data(train_data, train_labels, p_num))
-    p_validation = pick_p_data(valid_data, valid_labels, pv_num)
+sn_set = torch.utils.data.TensorDataset(
+    *pick_sn_data(train_data, train_labels, sn_num))
+sn_validation = pick_sn_data(valid_data, valid_labels, snv_num)
 
-    sn_set = torch.utils.data.TensorDataset(
-        *pick_sn_data(train_data, train_labels, sn_num))
-    sn_validation = pick_sn_data(valid_data, valid_labels, snv_num)
-
-    n_set = torch.utils.data.TensorDataset(
-        *pick_n_data(train_data, train_labels, n_num))
-    n_validation = pick_n_data(valid_data, valid_labels, nv_num)
-
-    if sets_save_name is not None:
-        pickle.dump(
-            (p_set, sn_set, u_set,
-             p_validation, sn_validation, u_validation),
-            open(sets_save_name, 'wb'))
-
-if sets_load_name is not None:
-    p_set, sn_set, u_set,\
-        p_validation, sn_validation, u_validation =\
-        pickle.load(open(sets_load_name, 'rb'))
+n_set = torch.utils.data.TensorDataset(
+    *pick_n_data(train_data, train_labels, n_num))
+n_validation = pick_n_data(valid_data, valid_labels, nv_num)
 
 
 t_labels = torch.zeros(test_labels.size())
@@ -282,7 +267,7 @@ if (partial_n or (iwpn and (adjust_p or adjust_sn))) and not use_true_post:
         .feed_in_batches(ppe_model, u_validation[0])).cpu()
 
 sep_value = np.percentile(
-    u_set.tensors[1].numpy().reshape(-1), int((1-pi-rho)*u_per*100))
+    u_set.tensors[1].numpy().reshape(-1), int((1-pi-true_rho)*u_per*100))
 print('\nsep_value =', sep_value)
 
 
@@ -403,6 +388,7 @@ if unbiased_pn:
     cls = training.PNClassifier(
             model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay,
             milestones=milestones, lr_d=lr_d,
+            validation_momentum=validation_momentum,
             start_validation_epoch=start_validation_epoch)
     cls.train(p_set, sn_set, test_set, p_batch_size, sn_batch_size,
               p_validation, sn_validation,
