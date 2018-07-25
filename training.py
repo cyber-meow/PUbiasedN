@@ -289,8 +289,8 @@ class PUClassifier(ClassifierFrom2):
                   - self.pi * torch.mean(self.basic_loss(-fpx, convex)))
         true_loss = p_loss + n_loss/(1-self.pi)*self.n_weight
         loss = true_loss
-        if not validation:
-            print(n_loss.item())
+        # if not validation:
+        #     print(n_loss.item())
         if self.nn and n_loss < self.nn_threshold:
             loss = -n_loss * self.nn_rate
         return loss.cpu(), true_loss.cpu()
@@ -706,3 +706,53 @@ class ThreeClassifier(ClassifierFrom3):
             pred = -torch.ones(labels.size())
             pred[torch.argmax(output, dim=1) == 0] = 1
         self.compute_classification_metrics(labels, pred, output, to_print)
+
+
+class MultiClassClassifier(Classifier):
+
+    def train(self, training_set, test_set,
+              batch_size, num_epochs,
+              test_interval=1, print_interval=1):
+
+        self.init_optimizer()
+        self.test(test_set)
+
+        train_loader = torch.utils.data.DataLoader(
+            training_set, batch_size=batch_size,
+            shuffle=True, num_workers=0)
+
+        for epoch in range(num_epochs):
+
+            average_loss = self.train_step(train_loader)
+
+            if (epoch+1) % test_interval == 0 or epoch+1 == num_epochs:
+
+                to_print = (epoch+1) % print_interval == 0
+                if to_print:
+                    sys.stdout.write('Epoch: {}  '.format(epoch))
+                    print('Train Loss: {:.6f}'.format(average_loss))
+                self.test(test_set)
+
+    def train_step(self, train_loader):
+        self.scheduler.step()
+        losses = []
+        for i, (x, target) in enumerate(train_loader):
+            self.model.train()
+            self.optimizer.zero_grad()
+            output = self.model(x.type(settings.dtype)).cpu()
+            loss = F.cross_entropy(output, target)
+            losses.append(loss.item())
+            loss.backward()
+            self.optimizer.step()
+        self.optimizer.zero_grad()
+        return np.mean(np.array(losses))
+
+    def test(self, test_set):
+        x = test_set.tensors[0]
+        labels = test_set.tensors[1]
+        output = self.feed_in_batches(self.model, x, settings.test_batch_size)
+        pred = output.max(1, keepdim=True)[1].cpu()
+        correct = pred.eq(labels.view_as(pred)).sum().item()
+        print('\nTest set: Accuracy: {}/{} ({:.0f}%)\n'.format(
+            correct, len(test_set),
+            100. * correct / len(test_set)))

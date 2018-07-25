@@ -17,9 +17,13 @@ import settings
 # from mnist.pu_biased_n import train_data, test_data
 # from mnist.pu_biased_n import train_labels, test_labels
 
-from uci.pu_biased_n import params, Net
-from uci.pu_biased_n import train_data, test_data
-from uci.pu_biased_n import train_labels, test_labels
+# from uci.pu_biased_n import params, Net
+# from uci.pu_biased_n import train_data, test_data
+# from uci.pu_biased_n import train_labels, test_labels
+
+from newsgroups.pu_biased_n import params, Net
+from newsgroups.pu_biased_n import train_data, test_data
+from newsgroups.pu_biased_n import train_labels, test_labels
 
 
 num_classes = params['num_classes']
@@ -91,8 +95,8 @@ unbiased_pn = params.get('unbiased_pn', False)
 
 random_seed = params['\nrandom_seed']
 
-ppe_save_name = params['ppe_save_name']
-ppe_load_name = params['ppe_load_name']
+ppe_save_name = params.get('ppe_save_name', None)
+ppe_load_name = params.get('ppe_load_name', None)
 
 priors = params.get('\npriors', None)
 if priors is None:
@@ -104,7 +108,7 @@ parser = argparse.ArgumentParser(description='Main File')
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
 
-parser.add_argument('--random-seed', type=int, default=0)
+parser.add_argument('--random-seed', type=int, default=None)
 parser.add_argument('--learning_rate', type=float, default=1e-3)
 parser.add_argument('--weight_decay', type=float, default=1e-4)
 parser.add_argument('--rho', type=float, default=0.2)

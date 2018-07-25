@@ -74,14 +74,6 @@ pnu = False
 
 random_seed = 0
 
-sets_save_name = None
-# sets_save_name = 'pickle/cifar10/1000_1000_10000/sets_357N_a.p'
-sets_load_name = None
-
-ppe_save_name = None
-# dre_save_name = 'pickle/cifar10/1000_1000_10000/ls_prob_est_rho02_357N_a.p'
-ppe_load_name = None
-
 settings.test_batch_size = 500
 settings.validation_interval = 100
 
@@ -127,10 +119,6 @@ params = OrderedDict([
     ('pu', pu),
     ('pnu', pnu),
     ('\nrandom_seed', random_seed),
-    ('\nsets_save_name', sets_save_name),
-    ('sets_load_name', sets_load_name),
-    ('ppe_save_name', ppe_save_name),
-    ('ppe_load_name', ppe_load_name),
 ])
 
 
