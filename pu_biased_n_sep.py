@@ -20,6 +20,10 @@ from mnist.pu_biased_n import train_labels, test_labels
 # from uci.pu_biased_n import train_data, test_data
 # from uci.pu_biased_n import train_labels, test_labels
 
+# from newsgroups.pu_biased_n import params, Net
+# from newsgroups.pu_biased_n import train_data, test_data
+# from newsgroups.pu_biased_n import train_labels, test_labels
+
 
 num_classes = params['num_classes']
 
@@ -122,42 +126,49 @@ def posteriors(labels):
     return posteriors.unsqueeze(1)
 
 
-def pick_p_data(data, labels, n):
+def pick_p_data(data, labels, n, not_include):
     p_idxs = np.zeros_like(labels)
     for i in range(num_classes):
         if i in positive_classes:
             p_idxs[(labels == i).numpy().astype(bool)] = 1
+    p_idxs[not_include] = 0
     p_idxs = np.argwhere(p_idxs == 1).reshape(-1)
     selected_p = np.random.choice(p_idxs, n, replace=False)
-    return data[selected_p], posteriors(labels[selected_p])
+    return data[selected_p], posteriors(labels[selected_p]), selected_p
 
 
-def pick_n_data(data, labels, n):
+def pick_n_data(data, labels, n, not_include):
     n_idxs = np.zeros_like(labels)
     for i in range(num_classes):
         if i not in positive_classes:
             n_idxs[(labels == i).numpy().astype(bool)] = 1
+    n_idxs[not_include] = 0
     n_idxs = np.argwhere(n_idxs == 1).reshape(-1)
     selected_n = np.random.choice(n_idxs, n, replace=False)
-    return data[selected_n], labels[selected_n]
+    return data[selected_n], labels[selected_n], selected_n
 
 
-def pick_sn_data(data, labels, n):
+def pick_sn_data(data, labels, n, not_include):
     neg_nums = np.random.multinomial(n, neg_ps)
     print('numbers in each subclass', neg_nums)
     selected_sn = []
     for i in range(num_classes):
         if neg_nums[i] != 0:
-            idxs = np.argwhere(labels == i).reshape(-1)
+            idxs = labels == i
+            idxs[not_include] == 0
+            idxs = np.argwhere(idxs).reshape(-1)
             selected = np.random.choice(idxs, neg_nums[i], replace=False)
             selected_sn.extend(selected)
     selected_sn = np.array(selected_sn)
-    return data[selected_sn], posteriors(labels[selected_sn])
+    return data[selected_sn], posteriors(labels[selected_sn]), selected_sn
 
 
-def pick_u_data(data, labels, n):
-    selected_u = np.random.choice(len(data), n, replace=False)
-    return data[selected_u], posteriors(labels[selected_u])
+def pick_u_data(data, labels, n, not_include):
+    u_idxs = np.ones(len(data))
+    u_idxs[not_include] = 0
+    u_idxs = np.argwhere(u_idxs == 1).reshape(-1)
+    selected_u = np.random.choice(u_idxs, n, replace=False)
+    return data[selected_u], posteriors(labels[selected_u]), selected_u
 
 
 np.random.seed(random_seed)
@@ -165,41 +176,37 @@ idxs = np.random.permutation(len(train_data))
 
 valid_data = train_data[idxs][u_cut:]
 valid_labels = train_labels[idxs][u_cut:]
-train_data1 = train_data[idxs][:int(u_cut/2)]
-train_labels1 = train_labels[idxs][:int(u_cut/2)]
-train_data2 = train_data[idxs][int(u_cut/2): u_cut]
-train_labels2 = train_labels[idxs][int(u_cut/2): u_cut]
+train_data = train_data[idxs][:u_cut]
+train_labels = train_labels[idxs][:u_cut]
 
 
-u_num, p_num, sn_num = int(u_num/2), int(p_num/2), int(sn_num/2)
-uv_num, pv_num, snv_num = int(uv_num/2), int(pv_num/2), int(snv_num/2)
+u_train2 = pick_u_data(train_data, train_labels, u_num, [])
+u_set2 = torch.utils.data.TensorDataset(u_train2[0], u_train2[1])
+u_validation2 = pick_u_data(valid_data, valid_labels, uv_num, [])
 
-u_set1 = torch.utils.data.TensorDataset(
-    *pick_u_data(train_data1, train_labels1, u_num))
-u_set2 = torch.utils.data.TensorDataset(
-    *pick_u_data(train_data2, train_labels2, u_num))
+p_train2 = pick_p_data(train_data, train_labels, p_num, [])
+p_set2 = torch.utils.data.TensorDataset(p_train2[0], p_train2[1])
+p_validation2 = pick_p_data(valid_data, valid_labels, pv_num, [])
 
-u_validation = pick_u_data(valid_data, valid_labels, uv_num)
-u_validation1 = u_validation[0][:int(uv_num/2)],
-u_validation2 = u_validation[0][int(uv_num/2):],
+sn_train2 = pick_sn_data(train_data, train_labels, sn_num, [])
+sn_set2 = torch.utils.data.TensorDataset(sn_train2[0], sn_train2[1])
+sn_validation2 = pick_sn_data(valid_data, valid_labels, snv_num, [])
 
-p_set1 = torch.utils.data.TensorDataset(
-    *pick_p_data(train_data1, train_labels1, p_num))
-p_set2 = torch.utils.data.TensorDataset(
-    *pick_p_data(train_data2, train_labels2, p_num))
 
-p_validation = pick_p_data(valid_data, valid_labels, pv_num)
-p_validation1 = p_validation[0][:int(pv_num/2)],
-p_validation2 = p_validation[0][int(pv_num/2):],
+u_train1 = pick_u_data(train_data, train_labels, u_num, u_train2[2])
+u_set1 = torch.utils.data.TensorDataset(u_train1[0], u_train1[1])
+u_validation1 = pick_u_data(
+    valid_data, valid_labels, uv_num, u_validation2[2])
 
-sn_set1 = torch.utils.data.TensorDataset(
-    *pick_sn_data(train_data1, train_labels1, sn_num))
-sn_set2 = torch.utils.data.TensorDataset(
-    *pick_sn_data(train_data2, train_labels2, sn_num))
+p_train1 = pick_p_data(train_data, train_labels, p_num, p_train2[2])
+p_set1 = torch.utils.data.TensorDataset(p_train1[0], p_train1[1])
+p_validation1 = pick_p_data(
+    valid_data, valid_labels, pv_num, p_validation2[2])
 
-sn_validation = pick_sn_data(valid_data, valid_labels, snv_num)
-sn_validation1 = sn_validation[0][:int(snv_num/2)],
-sn_validation2 = sn_validation[0][int(snv_num/2):],
+sn_train1 = pick_sn_data(train_data, train_labels, sn_num, sn_train2[2])
+sn_set1 = torch.utils.data.TensorDataset(sn_train1[0], sn_train1[1])
+sn_validation1 = pick_sn_data(
+    valid_data, valid_labels, snv_num, sn_validation2[2])
 
 
 t_labels = torch.zeros(test_labels.size())

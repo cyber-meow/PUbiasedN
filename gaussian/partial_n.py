@@ -245,13 +245,13 @@ if partial_n:
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
               training_epochs, convex_epochs=convex_epochs)
-    PUBN = plt.Line2D((0, 1), (0, 0), color='darkslategrey',
+    PUBN = plt.Line2D((0, 1), (0, 0), color='brown',
                       linestyle='-', linewidth=1.5)
     hdls.append(PUBN)
-    lbs.append('PUBN (proposed)')
+    lbs.append('PUbN (proposed)')
     for ax_c in [ax, ax2]:
         cls.model.plot_boundary(
-            ax_c, levels=[0], colors='darkslategrey',
+            ax_c, levels=[0], colors='brown',
             linestyles='-', linewidths=1.5)
     plt.pause(0.05)
 
@@ -268,13 +268,13 @@ if pu:
     cls.train(p_set, u_set, test_set_cls, p_batch_size, u_batch_size,
               p_validation, u_validation,
               training_epochs, convex_epochs=convex_epochs)
-    nnPU = plt.Line2D((0, 1), (0, 0), color='brown',
+    nnPU = plt.Line2D((0, 1), (0, 0), color='darkslategrey',
                       linestyle='--', linewidth=1.5)
     hdls.append(nnPU)
     lbs.append('nnPU')
     for ax_c in [ax, ax2]:
         cls.model.plot_boundary(
-            ax_c, levels=[0], colors='brown',
+            ax_c, levels=[0], colors='darkslategrey',
             linestyles='--', linewidths=1.5)
     plt.pause(0.05)
 

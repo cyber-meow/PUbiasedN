@@ -22,6 +22,7 @@ uv_num = 2000
 u_cut = 40000
 
 pi = 0.4
+true_rho = 0.3
 rho = 0.3
 
 # positive_classes = [3, 4, 5, 7]
@@ -68,6 +69,7 @@ use_true_post = False
 partial_n = True
 hard_label = False
 
+pu_then_pn = False
 iwpn = False
 pu = False
 pnu = False
@@ -89,6 +91,7 @@ params = OrderedDict([
     ('\nu_cut', u_cut),
     ('\npi', pi),
     ('rho', rho),
+    ('true_rho', true_rho),
     ('\npositive_classes', positive_classes),
     ('neg_ps', neg_ps),
     ('\nnon_pu_fraction', non_pu_fraction),
@@ -116,6 +119,7 @@ params = OrderedDict([
     ('\npartial_n', partial_n),
     ('hard_label', hard_label),
     ('\niwpn', iwpn),
+    ('pu_then_pn', pu_then_pn),
     ('pu', pu),
     ('pnu', pnu),
     ('\nrandom_seed', random_seed),

@@ -12,18 +12,19 @@ import settings
 
 num_classes = 10
 
-p_num = 1000
-sn_num = 1000
-u_num = 12000
+p_num = 500
+sn_num = 500
+u_num = 6000
 
-pv_num = 200
-snv_num = 200
-uv_num = 2400
+pv_num = 100
+snv_num = 100
+uv_num = 1200
 
 u_cut = 40000
 
 pi = 0.49
 # pi = 0.097
+true_rho = 0.3
 rho = 0.3
 
 positive_classes = [0, 2, 4, 6, 8]
@@ -95,6 +96,7 @@ params = OrderedDict([
     ('\nu_cut', u_cut),
     ('\npi', pi),
     ('rho', rho),
+    ('true_rho', true_rho),
     ('\npositive_classes', positive_classes),
     ('neg_ps', neg_ps),
     ('\nnon_pu_fraction', non_pu_fraction),

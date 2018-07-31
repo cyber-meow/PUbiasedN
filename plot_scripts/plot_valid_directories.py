@@ -10,7 +10,7 @@ import seaborn as sbn
 
 
 sbn.set()
-# sbn.set(font_scale=2)
+sbn.set(font_scale=2)
 
 parser = argparse.ArgumentParser()
 
@@ -24,7 +24,7 @@ dataset = args.dataset
 
 def read_directory(dir_name):
 
-    pi = 0.4
+    pi = 0.56
     plot_all = False
     to_plot = {}
 
@@ -65,7 +65,7 @@ def read_directory(dir_name):
                         to_plot[d][4][-1] = 100 - acs
                     except:
                         pass
-    for i in [2, 3, 5, 7, 8, 13, 14, 15]:
+    for i in [1, 2, 3, 5, 7, 8, 13, 14, 15, 18]:
         plot_or_not[i] = False
 
     # plt.rc('axes', prop_cycle=(
@@ -125,7 +125,7 @@ def read_one_file(filename):
     val_ls_losses, val_log_losses, val_sig_losses = [], [], []
     fprs = []
     for i, line in enumerate(content):
-        if line == '\n' and False:
+        if line == '\n':
             errs, err_stds, n_errs, n_err_stds = [], [], [], []
             accs, b_accs, aucs = [], [], []
             pres, recls, f1s = [], [], []
@@ -198,4 +198,4 @@ def read_one_file(filename):
 
 
 read_directory(args.directory_path)
-plt.show()
+# plt.show()

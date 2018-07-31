@@ -13,17 +13,17 @@ import settings
 # from cifar10.pu_biased_n import train_data, test_data
 # from cifar10.pu_biased_n import train_labels, test_labels
 
-# from mnist.pu_biased_n import params, Net
-# from mnist.pu_biased_n import train_data, test_data
-# from mnist.pu_biased_n import train_labels, test_labels
+from mnist.pu_biased_n import params, Net
+from mnist.pu_biased_n import train_data, test_data
+from mnist.pu_biased_n import train_labels, test_labels
 
 # from uci.pu_biased_n import params, Net
 # from uci.pu_biased_n import train_data, test_data
 # from uci.pu_biased_n import train_labels, test_labels
 
-from newsgroups.pu_biased_n import params, Net
-from newsgroups.pu_biased_n import train_data, test_data
-from newsgroups.pu_biased_n import train_labels, test_labels
+# from newsgroups.pu_biased_n import params, Net
+# from newsgroups.pu_biased_n import train_data, test_data
+# from newsgroups.pu_biased_n import train_labels, test_labels
 
 
 num_classes = params['num_classes']
@@ -73,6 +73,7 @@ else:
 
 start_validation_epoch = params.get('\nstart_validation_epoch', 0)
 milestones = params.get('milestones', [1000])
+milestones_ppe = params.get('milestones', milestones)
 lr_d = params.get('lr_d', 1)
 
 non_negative = params['\nnon_negative']
@@ -232,7 +233,7 @@ if pu_prob_est and ppe_load_name is None:
             model, pi=pi, rho=rho,
             lr=learning_rate_ppe, weight_decay=weight_decay,
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
-            milestones=milestones, lr_d=lr_d,
+            milestones=milestones_ppe, lr_d=lr_d,
             prob_est=True, validation_momentum=validation_momentum,
             start_validation_epoch=start_validation_epoch)
     ppe.train(p_set, sn_set, u_set, test_set,
@@ -335,7 +336,7 @@ if pu_then_pn:
     model = Net().cuda() if args.cuda else Net()
     cls = training.PUClassifier3(
             model, pi=pi, rho=rho,
-            lr=learning_rate_cls, weight_decay=weight_decay,
+            lr=learning_rate_ppe, weight_decay=weight_decay,
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
             milestones=milestones, lr_d=lr_d,
             validation_momentum=validation_momentum,
