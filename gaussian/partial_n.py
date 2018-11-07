@@ -15,32 +15,33 @@ from gaussian.generate_data import ThreeGaussian
 
 pi = 0.5
 
-p_num = 50
-sn_num = 50
-u_num = 100
+p_num = 100
+sn_num = 100
+u_num = 200
 
-pv_num = 50
-snv_num = 50
-uv_num = 100
+pv_num = 100
+snv_num = 100
+uv_num = 200
 
 t_num = 60000
 es_num = 50000
 
-sep_value = 0.5
+u_per = 0.9
 adjust_p = True
 adjust_sn = True
+hard_label = False
 
 training_epochs = 60
 convex_epochs = 60
 
-p_batch_size = 50
-sn_batch_size = 50
-u_batch_size = 100
+p_batch_size = 25
+sn_batch_size = 25
+u_batch_size = 50
 
 learning_rate = 1e-2
 weight_decay = 1e-4
 validation_momentum = 0
-start_validation_epoch = 45
+start_validation_epoch = 60
 
 non_negative = True
 nn_threshold = 0
@@ -49,6 +50,8 @@ nn_rate = 1
 partial_n = True
 pu = True
 unbiased_pn = True
+
+settings.validation_interval = 4
 
 
 params = OrderedDict([
@@ -61,7 +64,7 @@ params = OrderedDict([
     ('uv_num', uv_num),
     ('\nt_num', t_num),
     ('es_num', es_num),
-    ('\nsep_value', sep_value),
+    ('\nu_per', u_per),
     ('adjust_p', adjust_p),
     ('adjust_sn', adjust_sn),
     ('\ntraining_epochs', training_epochs),
@@ -118,7 +121,7 @@ sn_set = torch.utils.data.TensorDataset(
     torch.from_numpy(sn_samples))
 
 fig, ax = plt.subplots()
-tg.plot_samples(s=23)
+tg.plot_samples(s=18)
 tg.clear_samples()
 # plt.title('training')
 plt.legend()
@@ -229,8 +232,14 @@ if partial_n:
         .feed_in_batches(ppe_model, u_validation[0])).cpu()
 
     sep_value = np.percentile(
-        u_set.tensors[1].numpy().reshape(-1), int((1-pi-rho)*100))
+        u_set.tensors[1].numpy().reshape(-1), int((1-pi-rho)*100*u_per))
     print('\nsep_value =', sep_value)
+
+    identified_n = u_set.tensors[0].numpy()[
+        u_set.tensors[1].numpy().reshape(-1) <= sep_value]
+    ax.scatter(*identified_n.T, alpha=0.3, s=5, color='orange')
+    # ax2.scatter(*identified_n.T, alpha=0.3, s=5, color='orange')
+    plt.pause(0.05)
 
     print('')
     model = nets.Net().cuda() if args.cuda else nets.Net()
@@ -240,7 +249,7 @@ if partial_n:
             adjust_p=adjust_p, adjust_sn=adjust_sn,
             weight_decay=weight_decay,
             start_validation_epoch=start_validation_epoch,
-            validation_momentum=validation_momentum)
+            validation_momentum=validation_momentum, hard_label=hard_label)
     cls.train(p_set, sn_set, u_set, test_set_cls,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
@@ -268,13 +277,13 @@ if pu:
     cls.train(p_set, u_set, test_set_cls, p_batch_size, u_batch_size,
               p_validation, u_validation,
               training_epochs, convex_epochs=convex_epochs)
-    nnPU = plt.Line2D((0, 1), (0, 0), color='darkslategrey',
+    nnPU = plt.Line2D((0, 1), (0, 0), color='darkcyan',
                       linestyle='--', linewidth=1.5)
     hdls.append(nnPU)
     lbs.append('nnPU')
     for ax_c in [ax, ax2]:
         cls.model.plot_boundary(
-            ax_c, levels=[0], colors='darkslategrey',
+            ax_c, levels=[0], colors='darkcyan',
             linestyles='--', linewidths=1.5)
     plt.pause(0.05)
 

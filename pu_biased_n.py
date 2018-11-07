@@ -1,13 +1,14 @@
 import argparse
 import numpy as np
-import pickle
 
 import torch
 import torch.utils.data
 import torch.nn.functional as F
+from tensorboardX import SummaryWriter
 
 import training
 import settings
+from utils import save_checkpoint, load_checkpoint
 
 # from cifar10.pu_biased_n import params, Net
 # from cifar10.pu_biased_n import train_data, test_data
@@ -94,10 +95,15 @@ pu = params['pu']
 pnu = params['pnu']
 unbiased_pn = params.get('unbiased_pn', False)
 
+vat = params.get('\nvat', False)
+
 random_seed = params['\nrandom_seed']
 
 ppe_save_name = params.get('ppe_save_name', None)
 ppe_load_name = params.get('ppe_load_name', None)
+
+log_dir = 'logs/MNIST'
+visualize = False
 
 priors = params.get('\npriors', None)
 if priors is None:
@@ -241,11 +247,12 @@ if pu_prob_est and ppe_load_name is None:
               p_validation, sn_validation, u_validation,
               cls_training_epochs, convex_epochs=convex_epochs)
     if ppe_save_name is not None:
-        pickle.dump(ppe.model, open(ppe_save_name, 'wb'))
+        save_checkpoint(ppe.model, cls_training_epochs, ppe_save_name)
     ppe_model = ppe.model
 
 if ppe_load_name is not None:
-    ppe_model = pickle.load(open(ppe_load_name, 'rb'))
+    ppe_model = Net().cuda() if args.cuda else Net()
+    ppe_model = load_checkpoint(ppe_model, ppe_load_name)
 
 
 if (partial_n or (iwpn and (adjust_p or adjust_sn))) and not use_true_post:
@@ -279,7 +286,7 @@ print('\nsep_value =', sep_value)
 if partial_n:
     print('')
     model = Net().cuda() if args.cuda else Net()
-    cls = training.WeightedClassifier(
+    cls = training.PUbNClassifier(
             model, balanced=balanced, pi=pi, rho=rho,
             sep_value=sep_value,
             adjust_p=adjust_p, adjust_sn=adjust_sn, hard_label=hard_label,
@@ -290,7 +297,7 @@ if partial_n:
     cls.train(p_set, sn_set, u_set, test_set,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
-              cls_training_epochs, convex_epochs=convex_epochs)
+              cls_training_epochs, convex_epochs=convex_epochs, vat=vat)
 
 if iwpn:
     print('')
@@ -395,6 +402,26 @@ if unbiased_pn:
             milestones=milestones, lr_d=lr_d,
             validation_momentum=validation_momentum,
             start_validation_epoch=start_validation_epoch)
-    cls.train(p_set, sn_set, test_set, p_batch_size, sn_batch_size,
-              p_validation, sn_validation,
+    cls.train(p_set, n_set, test_set, p_batch_size, n_batch_size,
+              p_validation, n_validation,
               cls_training_epochs, convex_epochs=convex_epochs)
+
+
+n_embedding_points = 500
+
+if visualize:
+
+    indx = np.random.choice(test_data.size(0), size=n_embedding_points)
+
+    embedding_data = test_data[indx]
+    embedding_labels = t_labels.numpy().copy()
+    # Negative data that are not sampled
+    embedding_labels[test_posteriors.numpy().flatten() < 1/2] = 0
+    embedding_labels = embedding_labels[indx]
+    features = cls.last_layer_activation(embedding_data)
+    writer = SummaryWriter(log_dir=log_dir)
+    # writer.add_embedding(embedding_data.view(n_embedding_points, -1),
+    #                      metadata=embedding_labels,
+    #                      tag='Input', global_step=0)
+    writer.add_embedding(features, metadata=embedding_labels,
+                         tag='PUbN Features', global_step=cls_training_epochs)

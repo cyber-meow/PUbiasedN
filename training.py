@@ -10,6 +10,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 import settings
+from vat import VATLoss, entropy_with_logit
 
 
 class Training(object):
@@ -118,6 +119,18 @@ class Training(object):
                   .format(f1_score[1]*100), flush=True)
             print('Test set: False Positive Rate: {:.2f}%'
                   .format(n_false_positive/n_negative*100), flush=True)
+
+    def last_layer_activation(self, x):
+        features = []
+
+        def hook(module, input, output):
+            features.append(output)
+
+        getattr(self.model, 'fc1').register_forward_hook(hook)
+        self.feed_in_batches(
+            self.model, x, settings.test_batch_size)
+        print(torch.cat(features, dim=0))
+        return torch.cat(features, dim=0)
 
     def train(self, *args):
         raise NotImplementedError
@@ -299,7 +312,7 @@ class PUClassifier(ClassifierFrom2):
         x = test_set.tensors[0]
         target = test_set.tensors[2]
         target = target/torch.mean(target)*self.pi
-        output = F.sigmoid(self.feed_in_batches(
+        output = torch.sigmoid(self.feed_in_batches(
             self.model, x, settings.test_batch_size)).cpu()
         output = output/torch.mean(output)*self.pi
         error = torch.mean((target-output)**2).item()
@@ -329,7 +342,7 @@ class ClassifierFrom3(Classifier):
     def train(self, p_set, sn_set, u_set, test_set,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
-              num_epochs, convex_epochs=5,
+              num_epochs, convex_epochs=5, vat=False,
               test_interval=1, print_interval=1):
 
         self.init_optimizer()
@@ -355,7 +368,7 @@ class ClassifierFrom3(Classifier):
             convex = True if epoch < convex_epochs else False
             total_loss = self.train_step(
                 p_loader, sn_loader, u_loader,
-                p_validation, sn_validation, u_validation, convex)
+                p_validation, sn_validation, u_validation, convex, vat)
 
             if (epoch+1) % test_interval == 0 or epoch+1 == num_epochs:
 
@@ -371,7 +384,8 @@ class ClassifierFrom3(Classifier):
             self.test(test_set, True)
 
     def train_step(self, p_loader, sn_loader, u_loader,
-                   p_validation, sn_validation, u_validation, convex):
+                   p_validation, sn_validation, u_validation,
+                   convex, vat=False):
         self.scheduler.step()
         self.times += 1
         losses = []
@@ -383,13 +397,22 @@ class ClassifierFrom3(Classifier):
             else:
                 snx = None
             ux = next(iter(u_loader))
+            if vat:
+                vat_loss = VATLoss(xi=1e-2, eps=0.1, ip=1)
+                lds = vat_loss(self.model, ux[0].type(settings.dtype))
+                fux = self.model(ux[0].type(settings.dtype))
+                ent_loss = entropy_with_logit(fux)
             loss, true_loss = self.compute_loss(x, snx, ux, convex)
             losses.append(true_loss.item())
+            if vat:
+                loss += 10 * lds.cpu() + 0.01 * ent_loss.cpu()
             loss.backward()
             self.optimizer.step()
             if (i+1) % settings.validation_interval == 0:
                 self.validation(
                     p_validation, sn_validation, u_validation, convex)
+                if vat:
+                    print('VAT loss', lds.item())
         return np.mean(np.array(losses))
 
     def compute_pu_loss(self, px, nx, ux):
@@ -437,7 +460,7 @@ class PUClassifier3(ClassifierFrom3):
             else:
                 fpx, fux = self.feed_together(self.model, px, ux)
         p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
-        # fux_mean = torch.mean(F.sigmoid(fux))
+        # fux_mean = torch.mean(torch.sigmoid(fux))
         if self.rho != 0:
             sn_loss = self.rho * torch.mean(self.basic_loss(fsnx, convex))
             n_loss = (torch.mean(self.basic_loss(-fux, convex))
@@ -451,7 +474,7 @@ class PUClassifier3(ClassifierFrom3):
         else:
             true_loss = p_loss + n_loss
         loss = true_loss
-        print(n_loss.item())
+        # print(n_loss.item())
         if self.nn and n_loss < self.nn_threshold:
             loss = -n_loss * self.nn_rate
         # loss += (fux_mean - self.pi - self.rho)**2
@@ -470,9 +493,9 @@ class PUClassifier3(ClassifierFrom3):
         fpx = self.feed_in_batches(self.model, p_val)
         fsnx = self.feed_in_batches(self.model, sn_val)
         fux = self.feed_in_batches(self.model, u_val)
-        ls_loss = (torch.mean(F.sigmoid(fux)**2)
-                   - 2 * torch.mean(F.sigmoid(fpx)) * self.pi
-                   - 2 * torch.mean(F.sigmoid(fsnx)) * self.rho)
+        ls_loss = (torch.mean(torch.sigmoid(fux)**2)
+                   - 2 * torch.mean(torch.sigmoid(fpx)) * self.pi
+                   - 2 * torch.mean(torch.sigmoid(fsnx)) * self.rho)
         print('Validation Ls Loss:', ls_loss.cpu().item(), flush=True)
         p_loss = self.pi * self.average_loss(fpx)
         sn_loss = self.rho * self.average_loss(fsnx)
@@ -509,7 +532,7 @@ class PUClassifier3(ClassifierFrom3):
         target = test_set.tensors[2]
         output = self.feed_in_batches(
                 self.model, x, settings.test_batch_size).cpu()
-        output_prob = F.sigmoid(output)
+        output_prob = torch.sigmoid(output)
         error = torch.mean((target-output_prob)**2).item()
         error_std = torch.std((target-output_prob)**2).item()
         if to_print:
@@ -556,7 +579,7 @@ class PNUClassifier(ClassifierFrom3):
         return loss.cpu(), true_loss.cpu()
 
 
-class WeightedClassifier(ClassifierFrom3):
+class PUbNClassifier(ClassifierFrom3):
 
     def __init__(self, model, sep_value=0.3,
                  adjust_p=True, adjust_sn=True, hard_label=False,

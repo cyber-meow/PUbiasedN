@@ -262,7 +262,7 @@ print('\nsep_value =', sep_value)
 
 print('')
 model = Net().cuda() if args.cuda else Net()
-cls = training.WeightedClassifier(
+cls = training.PUbNClassifier(
         model, balanced=balanced, pi=pi, rho=rho,
         sep_value=sep_value,
         adjust_p=adjust_p, adjust_sn=adjust_sn, hard_label=hard_label,

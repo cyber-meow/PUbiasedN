@@ -109,3 +109,5 @@ plots/
 tmp/
 pickle/
 outdated/
+logs/
+weights/

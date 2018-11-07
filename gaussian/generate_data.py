@@ -105,9 +105,11 @@ class ThreeGaussian(object):
 
     def __init__(self, **kwargs):
         self.mu1 = np.array([0, 0])
-        self.mu2 = np.array([1.5, 1.5])
-        self.mu3 = np.array([-5, -5])
+        self.mu2 = np.array([3, 0])
+        self.mu3 = np.array([2, 2])
         self.cov = np.array([[1, 0], [0, 1]])
+        self.cov2 = np.array([[2, 0], [0, 2]])
+        self.cov3 = np.array([[1, 0], [0, 1]])
         self.on1_prob = 1
         self.positive_samples = []
         self.negative_samples = []
@@ -143,9 +145,9 @@ class ThreeGaussian(object):
     def draw_negative(self, n, store=True):
         n_negative1 = np.random.binomial(n, 1/2)
         n1_samples = np.random.multivariate_normal(
-            self.mu2, self.cov, n_negative1)
+            self.mu2, self.cov2, n_negative1)
         n2_samples = np.random.multivariate_normal(
-            self.mu3, self.cov, n-n_negative1)
+            self.mu3, self.cov3, n-n_negative1)
         drawn = np.r_[n1_samples, n2_samples]
         if store:
             self.negative_samples.extend(drawn)
@@ -160,7 +162,7 @@ class ThreeGaussian(object):
         return np.random.permutation(u_samples)
 
     def draw_observed_negative(self, n, store=True):
-        drawn = np.random.multivariate_normal(self.mu2, self.cov, n)
+        drawn = np.random.multivariate_normal(self.mu2, self.cov2, n)
         if store:
             self.observed_negative_samples.extend(drawn)
         return drawn

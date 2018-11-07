@@ -10,7 +10,7 @@ import seaborn as sbn
 
 
 sbn.set()
-sbn.set(font_scale=2)
+# sbn.set(font_scale=2)
 
 parser = argparse.ArgumentParser()
 

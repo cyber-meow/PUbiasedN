@@ -14,9 +14,11 @@ num_classes = 10
 
 p_num = 500
 sn_num = 500
+n_num = 500
 u_num = 6000
 
 pv_num = 100
+nv_num = 100
 snv_num = 100
 uv_num = 1200
 
@@ -45,6 +47,7 @@ cls_training_epochs = 100
 convex_epochs = 100
 
 p_batch_size = 10
+n_batch_size = 10
 sn_batch_size = 10
 u_batch_size = 120
 
@@ -61,36 +64,38 @@ nn_rate = 1
 
 settings.validation_interval = 50
 
-pu_prob_est = False
+pu_prob_est = True
 use_true_post = False
 
-partial_n = False
+partial_n = True
 hard_label = False
 
 pn_then_pu = False
-pu_then_pn = True
+pu_then_pn = False
 iwpn = False
 pu = False
 pnu = False
+unbiased_pn = False
 
-random_seed = 0
+vat = True
+
+random_seed = 10
 
 sets_save_name = None
-# sets_load_name = 'pickle/mnist/1000_1000_10000/imbN/sets_imbN_a.p'
 sets_load_name = None
 
 ppe_save_name = None
-# dre_load_name = ('pickle/mnist/1000_1000_10000/imbN/'
-#                  + 'ls_prob_est_rho015_imbN_a.p')
-ppe_load_name = None
+ppe_load_name = 'weights/MNIST'
 
 
 params = OrderedDict([
     ('num_classes', num_classes),
     ('\np_num', p_num),
+    ('n_num', n_num),
     ('sn_num', sn_num),
     ('u_num', u_num),
     ('\npv_num', pv_num),
+    ('nv_num', nv_num),
     ('snv_num', snv_num),
     ('uv_num', uv_num),
     ('\nu_cut', u_cut),
@@ -107,6 +112,7 @@ params = OrderedDict([
     ('\ncls_training_epochs', cls_training_epochs),
     ('convex_epochs', convex_epochs),
     ('\np_batch_size', p_batch_size),
+    ('n_batch_size', n_batch_size),
     ('sn_batch_size', sn_batch_size),
     ('u_batch_size', u_batch_size),
     ('\nlearning_rate_cls', learning_rate_cls),
@@ -126,6 +132,8 @@ params = OrderedDict([
     ('pu_then_pn', pu_then_pn),
     ('pu', pu),
     ('pnu', pnu),
+    ('unbiased_pn', unbiased_pn),
+    ('\nvat', vat),
     ('\nrandom_seed', random_seed),
     ('\nsets_save_name', sets_save_name),
     ('sets_load_name', sets_load_name),
