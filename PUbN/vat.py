@@ -2,6 +2,7 @@
 
 import contextlib
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 
@@ -37,15 +38,7 @@ def entropy_with_logit(logits):
     return -torch.mean(ent_p)-torch.mean(ent_q)
 
 
-def entropy_regularization(model, x):
-    with _disable_tracking_bn_stats(model):
-        fx = model(x)
-        ent_loss = entropy_with_logit(fx)
-    return ent_loss
-
-
-# no idea if it works or not
-class VAT(object):
+class VATLoss(nn.Module):
 
     def __init__(self, xi=10.0, eps=1.0, ip=1):
         """VAT loss
@@ -53,50 +46,30 @@ class VAT(object):
         :param eps: hyperparameter of VAT (default: 1.0)
         :param ip: iteration times of computing adv noise (default: 1)
         """
+        super(VATLoss, self).__init__()
         self.xi = xi
         self.eps = eps
         self.ip = ip
 
-    def __call__(self, model, x):
-        # # shape [batch_size, 1]
-        # logits_p = model(x, update_batch_stats=False).detach()
-
-        # # prepare random unit tensor
-        # d = torch.randn(x.shape).to(x.device)
-        # d = _l2_normalize(d)
-
-        # # calc adversarial direction
-        # for _ in range(self.ip):
-        #     # x_hat = x + self.xi*d
-        #     d.requires_grad_()
-        #     logits_m = model(x + self.xi*d, update_batch_stats=False)
-        #     adv_distance = _kl_div_with_logit(logits_p, logits_m)
-        #     adv_distance.backward()
-        #     # d = _l2_normalize(d.grad)
-        #     d = _l2_normalize(d.grad)
-        #     model.zero_grad()
-
-        # # calc LDS
-        # r_adv = d * self.eps
-        # logits_m = model(x + r_adv.detach(), update_batch_stats=False)
-        # lds = _kl_div_with_logit(logits_p, logits_m)
-        with _disable_tracking_bn_stats(model):
+    def forward(self, model, x):
+        # why??
+        with torch.no_grad():
             # shape [batch_size, 1]
-            logits_p = model(x).detach()
+            logits_p = model(x)
 
-            # prepare random unit tensor
-            d = torch.randn(x.shape).to(x.device)
-            d = _l2_normalize(d)
+        # prepare random unit tensor
+        d = torch.rand(x.shape).sub(0.5).to(x.device)
+        d = _l2_normalize(d)
 
+        with _disable_tracking_bn_stats(model):
             # calc adversarial direction
             for _ in range(self.ip):
-                x_hat = x + self.xi*d
-                x_hat.requires_grad = True
-                logits_m = model(x_hat)
+                d.requires_grad_()
+                logits_m = model(x + self.xi * d)
                 adv_distance = _kl_div_with_logit(logits_p, logits_m)
                 adv_distance.backward()
-                # d = _l2_normalize(d.grad)
-                d = _l2_normalize(x_hat.grad)
+                d = _l2_normalize(d.grad)
+                model.zero_grad()
 
             # calc LDS
             r_adv = d * self.eps

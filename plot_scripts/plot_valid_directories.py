@@ -24,7 +24,7 @@ dataset = args.dataset
 
 def read_directory(dir_name):
 
-    pi = 0.56
+    pi = 0.49
     plot_all = False
     to_plot = {}
 
@@ -198,4 +198,4 @@ def read_one_file(filename):
 
 
 read_directory(args.directory_path)
-# plt.show()
+plt.show()

@@ -1,5 +1,4 @@
 import argparse
-import random
 import numpy as np
 
 import torch
@@ -11,13 +10,13 @@ import training
 import settings
 from utils import save_checkpoint, load_checkpoint
 
-# from cifar10.pu_biased_n import params, Net
-# from cifar10.pu_biased_n import train_data, test_data
-# from cifar10.pu_biased_n import train_labels, test_labels
+from cifar10.pu_biased_n import params, Net
+from cifar10.pu_biased_n import train_data, test_data
+from cifar10.pu_biased_n import train_labels, test_labels
 
-from mnist.pu_biased_n import params, Net
-from mnist.pu_biased_n import train_data, test_data
-from mnist.pu_biased_n import train_labels, test_labels
+# from mnist.pu_biased_n import params, Net
+# from mnist.pu_biased_n import train_data, test_data
+# from mnist.pu_biased_n import train_labels, test_labels
 
 # from uci.pu_biased_n import params, Net
 # from uci.pu_biased_n import train_data, test_data
@@ -97,10 +96,6 @@ pnu = params['pnu']
 unbiased_pn = params.get('unbiased_pn', False)
 
 vat = params.get('\nvat', False)
-ent = params.get('ent', False)
-
-alpha = params.get('alpha', 1)
-beta = params.get('beta', 1)
 
 random_seed = params['\nrandom_seed']
 
@@ -108,7 +103,7 @@ ppe_save_name = params.get('ppe_save_name', None)
 ppe_load_name = params.get('ppe_load_name', None)
 
 log_dir = 'logs/MNIST'
-visualize = True
+visualize = False
 
 priors = params.get('\npriors', None)
 if priors is None:
@@ -128,8 +123,6 @@ parser.add_argument('--u_per', type=float, default=0.5)
 parser.add_argument('--gamma', type=float, default=0.5)
 parser.add_argument('--adjust_p', default=True)
 parser.add_argument('--algo', type=int, default=0)
-parser.add_argument('--ppe-save-path', type=str, default=None)
-parser.add_argument('--ppe-load-path', type=str, default=None)
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -137,14 +130,6 @@ args.cuda = not args.no_cuda and torch.cuda.is_available()
 if args.random_seed is not None:
     params['\nrandom_seed'] = args.random_seed
     random_seed = args.random_seed
-
-if args.ppe_save_path is not None:
-    params['ppe_save_name'] = args.ppe_save_path
-    ppe_save_name = args.ppe_save_path
-
-if args.ppe_load_path is not None:
-    params['ppe_load_name'] = args.ppe_load_path
-    ppe_load_name = args.ppe_load_path
 
 
 settings.dtype = torch.cuda.FloatTensor if args.cuda else torch.FloatTensor
@@ -205,12 +190,6 @@ def pick_u_data(data, labels, n):
 
 
 np.random.seed(random_seed)
-random.seed(random_seed)
-torch.manual_seed(random_seed)
-torch.cuda.manual_seed(random_seed)
-torch.backends.cudnn.deterministic = True
-
-
 idxs = np.random.permutation(len(train_data))
 
 valid_data = train_data[idxs][u_cut:]
@@ -248,6 +227,9 @@ test_posteriors = posteriors(test_labels)
 
 test_set = torch.utils.data.TensorDataset(
     test_data, t_labels.unsqueeze(1).float(), test_posteriors)
+
+
+torch.manual_seed(random_seed)
 
 
 if pu_prob_est and ppe_load_name is None:
@@ -315,10 +297,7 @@ if partial_n:
     cls.train(p_set, sn_set, u_set, test_set,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
-              cls_training_epochs, convex_epochs=convex_epochs,
-              vat=vat, ent=ent, alpha=alpha, beta=beta)
-    save_checkpoint(cls.model, cls_training_epochs,
-                    'weights/MNIST/135N/cls_1e-3_1')
+              cls_training_epochs, convex_epochs=convex_epochs, vat=vat)
 
 if iwpn:
     print('')
@@ -418,30 +397,14 @@ if pnu:
 if unbiased_pn:
     print('')
     model = Net().cuda() if args.cuda else Net()
-    if vat or ent:
-        cls = training.SSLClassifier(
-                model, pi=pi,
-                lr=learning_rate_cls, weight_decay=weight_decay,
-                milestones=milestones, lr_d=lr_d,
-                validation_momentum=validation_momentum,
-                start_validation_epoch=start_validation_epoch)
-        print(vat)
-        print(ent)
-        cls.train(p_set, n_set, u_set, test_set,
-                  p_batch_size, n_batch_size, u_batch_size,
-                  p_validation, n_validation, u_validation,
-                  cls_training_epochs, convex_epochs=convex_epochs,
-                  vat=vat, ent=ent, alpha=alpha, beta=beta)
-    else:
-        cls = training.PNClassifier(
-                model, pi=pi,
-                lr=learning_rate_cls, weight_decay=weight_decay,
-                milestones=milestones, lr_d=lr_d,
-                validation_momentum=validation_momentum,
-                start_validation_epoch=start_validation_epoch)
-        cls.train(p_set, n_set, test_set, p_batch_size, n_batch_size,
-                  p_validation, n_validation,
-                  cls_training_epochs, convex_epochs=convex_epochs)
+    cls = training.PNClassifier(
+            model, pi=pi, lr=learning_rate_cls, weight_decay=weight_decay,
+            milestones=milestones, lr_d=lr_d,
+            validation_momentum=validation_momentum,
+            start_validation_epoch=start_validation_epoch)
+    cls.train(p_set, n_set, test_set, p_batch_size, n_batch_size,
+              p_validation, n_validation,
+              cls_training_epochs, convex_epochs=convex_epochs)
 
 
 n_embedding_points = 500
@@ -461,5 +424,4 @@ if visualize:
     #                      metadata=embedding_labels,
     #                      tag='Input', global_step=0)
     writer.add_embedding(features, metadata=embedding_labels,
-                         tag='PUbN Features 2',
-                         global_step=cls_training_epochs)
+                         tag='PUbN Features', global_step=cls_training_epochs)

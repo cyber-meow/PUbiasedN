@@ -111,3 +111,4 @@ pickle/
 outdated/
 logs/
 weights/
+*.sh

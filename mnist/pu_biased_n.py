@@ -57,6 +57,7 @@ weight_decay = 1e-4
 validation_momentum = 0
 
 start_validation_epoch = 0
+milestones = [200]
 
 non_negative = True
 nn_threshold = 0
@@ -77,7 +78,11 @@ pu = False
 pnu = False
 unbiased_pn = False
 
-vat = True
+vat = False
+ent = False
+
+alpha = 1
+beta = 0.8
 
 random_seed = 10
 
@@ -85,7 +90,8 @@ sets_save_name = None
 sets_load_name = None
 
 ppe_save_name = None
-ppe_load_name = 'weights/MNIST'
+ppe_load_name = 'weights/MNIST/135N/500P+500N_135N_1e-3_1'
+# ppe_load_name = None
 
 
 params = OrderedDict([
@@ -120,6 +126,7 @@ params = OrderedDict([
     ('weight_decay', weight_decay),
     ('validation_momentum', validation_momentum),
     ('\nstart_validation_epoch', start_validation_epoch),
+    ('milestones', milestones),
     ('\nnon_negative', non_negative),
     ('nn_threshold', nn_threshold),
     ('nn_rate', nn_rate),
@@ -134,6 +141,9 @@ params = OrderedDict([
     ('pnu', pnu),
     ('unbiased_pn', unbiased_pn),
     ('\nvat', vat),
+    ('ent', ent),
+    ('alpha', alpha),
+    ('beta', beta),
     ('\nrandom_seed', random_seed),
     ('\nsets_save_name', sets_save_name),
     ('sets_load_name', sets_load_name),
@@ -198,3 +208,33 @@ class Net(nn.Module):
         x = F.dropout(x, training=self.training)
         x = self.fc2(x)
         return x
+
+
+def call_bn(bn, x, update_batch_stats=True):
+    if bn.training is False:
+        return bn(x)
+    elif not update_batch_stats:
+        return F.batch_norm(x, None, None, bn.weight, bn.bias, True,
+                            bn.momentum, bn.eps)
+    else:
+        return bn(x)
+
+
+# Following this repository
+# https://github.com/musyoku/vat
+class FcNet(nn.Module):
+    def __init__(self, n_class=1, n_ch=1, res=28):
+        super(FcNet, self).__init__()
+        self.input_len = n_ch * res * res
+        self.fc1 = nn.Linear(self.input_len, 1200)
+        self.fc2 = nn.Linear(1200, 600)
+        self.fc3 = nn.Linear(600, n_class)
+
+        self.bn_fc1 = nn.BatchNorm1d(1200)
+        self.bn_fc2 = nn.BatchNorm1d(600)
+
+    def __call__(self, x, update_batch_stats=True):
+        h = F.relu(call_bn(self.bn_fc1, self.fc1(x.view(-1, self.input_len)),
+                           update_batch_stats))
+        h = F.relu(call_bn(self.bn_fc2, self.fc2(h), update_batch_stats))
+        return self.fc3(h)

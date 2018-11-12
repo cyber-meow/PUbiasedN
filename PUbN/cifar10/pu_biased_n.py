@@ -74,15 +74,9 @@ iwpn = False
 pu = False
 pnu = False
 
-vat = False
-ent = True
-alpha = 1
-beta = 0.8
+vat = True
 
 random_seed = 0
-
-ppe_save_name = 'weights/CIFAR10_1000P+1000N_357N_b10_1e345_1'
-ppe_load_name = None
 
 settings.test_batch_size = 500
 settings.validation_interval = 100
@@ -131,12 +125,7 @@ params = OrderedDict([
     ('pu', pu),
     ('pnu', pnu),
     ('\nvat', vat),
-    ('ent', ent),
-    ('alpha', alpha),
-    ('beta', beta),
     ('\nrandom_seed', random_seed),
-    ('ppe_save_name', ppe_save_name),
-    ('ppe_load_name', ppe_load_name),
 ])
 
 

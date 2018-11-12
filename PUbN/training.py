@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 import settings
-from vat import VAT, entropy_regularization
+from vat import VATLoss, entropy_with_logit
 
 
 class Training(object):
@@ -342,8 +342,7 @@ class ClassifierFrom3(Classifier):
     def train(self, p_set, sn_set, u_set, test_set,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
-              num_epochs, convex_epochs=5,
-              vat=False, ent=False, alpha=1, beta=1,
+              num_epochs, convex_epochs=5, vat=False,
               test_interval=1, print_interval=1):
 
         self.init_optimizer()
@@ -369,8 +368,7 @@ class ClassifierFrom3(Classifier):
             convex = True if epoch < convex_epochs else False
             avg_loss = self.train_step(
                 p_loader, sn_loader, u_loader,
-                p_validation, sn_validation, u_validation, convex,
-                vat, ent, alpha, beta)
+                p_validation, sn_validation, u_validation, convex, vat)
 
             if (epoch+1) % test_interval == 0 or epoch+1 == num_epochs:
 
@@ -387,40 +385,34 @@ class ClassifierFrom3(Classifier):
 
     def train_step(self, p_loader, sn_loader, u_loader,
                    p_validation, sn_validation, u_validation,
-                   convex, vat=False, ent=False, alpha=1, beta=1):
+                   convex, vat=False):
         self.scheduler.step()
         self.times += 1
         losses = []
         for i, x in enumerate(p_loader):
             self.model.train()
+            self.optimizer.zero_grad()
             if sn_loader is not None:
                 snx = next(iter(sn_loader))
             else:
                 snx = None
             ux = next(iter(u_loader))
-            additional_loss = torch.tensor(0).type(settings.dtype)
             if vat:
-                vat_loss = VAT(xi=10, eps=0.1, ip=1)
-                lds = alpha * vat_loss(self.model, ux[0].type(settings.dtype))
-                additional_loss += lds
-            if ent:
-                ent_loss = beta * entropy_regularization(
-                    self.model, ux[0].type(settings.dtype))
-                additional_loss += ent_loss
+                vat_loss = VATLoss(xi=1e-2, eps=0.1, ip=1)
+                lds = vat_loss(self.model, ux[0].type(settings.dtype))
+                fux = self.model(ux[0].type(settings.dtype))
+                ent_loss = entropy_with_logit(fux)
             loss, true_loss = self.compute_loss(x, snx, ux, convex)
             losses.append(true_loss.item())
-            loss += additional_loss.cpu()
-            self.optimizer.zero_grad()
+            if vat:
+                loss += 1 * lds.cpu() + 1 * ent_loss.cpu()
             loss.backward()
             self.optimizer.step()
             if (i+1) % settings.validation_interval == 0:
                 self.validation(
                     p_validation, sn_validation, u_validation, convex)
-        if vat:
-            print('Training VAT loss', lds.item())
-        if ent:
-            print('Training ENT loss', ent_loss.item())
-        print('Training CE loss', true_loss.item())
+                if vat:
+                    print('Training VAT loss', lds.item())
         return np.mean(np.array(losses))
 
     def compute_pu_loss(self, px, nx, ux):
@@ -433,23 +425,6 @@ class ClassifierFrom3(Classifier):
                   - self.pi * torch.mean(self.basic_loss(-fpx, False)))
         # n_loss = (torch.mean((fux > 0).float())
         #           - self.pi * torch.mean((fpx > 0).float()))
-        loss = p_loss + n_loss
-        return loss.cpu(), loss.cpu()
-
-
-class SSLClassifier(ClassifierFrom3):
-
-    def __init__(self, model, *args, **kwargs):
-        super().__init__(model, *args, **kwargs)
-
-    def compute_loss(self, px, nx, ux, convex, validation=False):
-        if validation:
-            fpx = self.feed_in_batches(self.model, px[0])
-            fnx = self.feed_in_batches(self.model, nx[0])
-            convex = False
-        fpx, fnx, fux = self.feed_together(self.model, px[0], nx[0], ux[0])
-        p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
-        n_loss = (1-self.pi) * torch.mean(self.basic_loss(-fnx, convex))
         loss = p_loss + n_loss
         return loss.cpu(), loss.cpu()
 
