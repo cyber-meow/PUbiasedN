@@ -171,9 +171,9 @@ def read_one_file(filename):
         if line.startswith('Epoch'):
             a = line.split()
             losses.append(float(a[4]))
-        if (line.startswith('Validation Loss')
-                and i != len(content)-1
-                and content[i+1].startswith('Epoch')):
+        if line.startswith('Validation Loss'):
+                # and i != len(content)-1
+                # and content[i+1].startswith('Epoch')):
             a = line.split()
             val_losses.append(float(a[2]))
         if (line.startswith('Validation Ls Loss')

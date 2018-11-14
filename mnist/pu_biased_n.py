@@ -26,15 +26,17 @@ u_cut = 40000
 
 pi = 0.49
 # pi = 0.097
-true_rho = 0.3
-rho = 0.3
+true_rho = 0.25
+rho = 0.25
 
-positive_classes = [0, 2, 4, 6, 8]
+positive_classes = [0, 2, 4, 6]
+negative_classes = [1, 3, 5, 7]
 
 # neg_ps = [0, 0.03, 0, 0.15, 0, 0.3, 0, 0.02, 0, 0.5]
 # neg_ps = [0, 0.2, 0, 0.2, 0, 0.2, 0, 0.2, 0, 0.2]
-neg_ps = [0, 1/3, 0, 1/3, 0, 1/3, 0, 0, 0, 0]
+# neg_ps = [0, 1/3, 0, 1/3, 0, 1/3, 0, 0, 0, 0]
 # neg_ps = [1/6, 1/6, 1/6, 1/6, 0, 1/6, 1/6, 0, 0, 0]
+neg_ps = [0, 0, 0, 0, 0, 1/4, 0, 1/4, 1/4, 1/4]
 
 non_pu_fraction = 0.7
 balanced = False
@@ -90,8 +92,8 @@ sets_save_name = None
 sets_load_name = None
 
 ppe_save_name = None
-ppe_load_name = 'weights/MNIST/135N/500P+500N_135N_1e-3_1'
-# ppe_load_name = None
+# ppe_load_name = 'weights/MNIST/135N/500P+500N_135N_1e-3_1'
+ppe_load_name = None
 
 
 params = OrderedDict([
@@ -109,6 +111,7 @@ params = OrderedDict([
     ('rho', rho),
     ('true_rho', true_rho),
     ('\npositive_classes', positive_classes),
+    ('negative_classes', negative_classes),
     ('neg_ps', neg_ps),
     ('\nnon_pu_fraction', non_pu_fraction),
     ('balanced', balanced),

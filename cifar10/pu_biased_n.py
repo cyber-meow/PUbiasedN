@@ -21,19 +21,21 @@ uv_num = 2000
 
 u_cut = 40000
 
-pi = 0.4
-true_rho = 0.3
-rho = 0.3
+pi = 0.5
+true_rho = 0.25
+rho = 0.25
 
 # positive_classes = [3, 4, 5, 7]
 # positive_classes = [1]
 positive_classes = [0, 1, 8, 9]
+negative_classes = [2, 3, 4, 5]
 
 # neg_ps = [0, 0, 1/2, 0, 0, 0, 1/2, 0, 0, 0]
 # neg_ps = [0, 1/2, 0, 0, 0, 0, 0, 0, 0, 1/2]
-neg_ps = [0, 0, 0, 1/3, 0, 1/3, 0, 1/3, 0, 0]
+# neg_ps = [0, 0, 0, 1/3, 0, 1/3, 0, 1/3, 0, 0]
 # neg_ps = [0, 0, 0.1, 0.02, 0.2, 0.08, 0.2, 0.4, 0, 0]
 # neg_ps = [0, 0, 1/6, 1/6, 1/6, 1/6, 1/6, 1/6, 0, 0]
+neg_ps = [0, 0, 0, 0, 1/4, 1/4, 1/4, 1/4, 0, 0]
 
 
 non_pu_fraction = 0.5
@@ -75,13 +77,14 @@ pu = False
 pnu = False
 
 vat = False
-ent = True
+ent = False
 alpha = 1
 beta = 0.8
 
 random_seed = 0
 
-ppe_save_name = 'weights/CIFAR10_1000P+1000N_357N_b10_1e345_1'
+# ppe_save_name = 'weights/CIFAR10_1000P+1000N_357N_b10_1e345_1'
+ppe_save_name = None
 ppe_load_name = None
 
 settings.test_batch_size = 500
@@ -101,6 +104,7 @@ params = OrderedDict([
     ('rho', rho),
     ('true_rho', true_rho),
     ('\npositive_classes', positive_classes),
+    ('negative_classes', negative_classes),
     ('neg_ps', neg_ps),
     ('\nnon_pu_fraction', non_pu_fraction),
     ('balanced', balanced),

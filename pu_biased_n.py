@@ -1,23 +1,23 @@
 import argparse
 import random
+import yaml
 import numpy as np
 
 import torch
 import torch.utils.data
-import torch.nn.functional as F
 from tensorboardX import SummaryWriter
 
 import training
 import settings
 from utils import save_checkpoint, load_checkpoint
 
-# from cifar10.pu_biased_n import params, Net
-# from cifar10.pu_biased_n import train_data, test_data
-# from cifar10.pu_biased_n import train_labels, test_labels
+from cifar10.pu_biased_n import params, Net
+from cifar10.pu_biased_n import train_data, test_data
+from cifar10.pu_biased_n import train_labels, test_labels
 
-from mnist.pu_biased_n import params, Net
-from mnist.pu_biased_n import train_data, test_data
-from mnist.pu_biased_n import train_labels, test_labels
+# from mnist.pu_biased_n import params, Net
+# from mnist.pu_biased_n import train_data, test_data
+# from mnist.pu_biased_n import train_labels, test_labels
 
 # from uci.pu_biased_n import params, Net
 # from uci.pu_biased_n import train_data, test_data
@@ -26,6 +26,44 @@ from mnist.pu_biased_n import train_labels, test_labels
 # from newsgroups.pu_biased_n import params, Net
 # from newsgroups.pu_biased_n import train_data, test_data
 # from newsgroups.pu_biased_n import train_labels, test_labels
+
+
+parser = argparse.ArgumentParser(description='Main File')
+
+parser.add_argument('--no-cuda', action='store_true', default=False,
+                    help='disables CUDA training')
+
+parser.add_argument('--random-seed', type=int, default=None)
+parser.add_argument('--learning_rate', type=float, default=1e-3)
+parser.add_argument('--weight_decay', type=float, default=1e-4)
+parser.add_argument('--rho', type=float, default=0.2)
+parser.add_argument('--u_per', type=float, default=0.5)
+parser.add_argument('--gamma', type=float, default=0.5)
+parser.add_argument('--adjust_p', default=True)
+parser.add_argument('--algo', type=int, default=0)
+parser.add_argument('--ppe-save-path', type=str, default=None)
+parser.add_argument('--ppe-load-path', type=str, default=None)
+parser.add_argument('--params-path', type=str, default=None)
+
+args = parser.parse_args()
+args.cuda = not args.no_cuda and torch.cuda.is_available()
+
+
+if args.params_path is not None:
+    with open(args.params_path) as f:
+        params_file = yaml.load(f)
+    for key in params_file:
+        params[key] = params_file[key]
+
+
+if args.random_seed is not None:
+    params['\nrandom_seed'] = args.random_seed
+
+if args.ppe_save_path is not None:
+    params['ppe_save_name'] = args.ppe_save_path
+
+if args.ppe_load_path is not None:
+    params['ppe_load_name'] = args.ppe_load_path
 
 
 num_classes = params['num_classes']
@@ -47,6 +85,7 @@ rho = params['rho']
 true_rho = params.get('true_rho', rho)
 
 positive_classes = params['\npositive_classes']
+negative_classes = params.get('negative_classes', None)
 neg_ps = params['neg_ps']
 
 non_pu_fraction = params['\nnon_pu_fraction']
@@ -108,43 +147,11 @@ ppe_save_name = params.get('ppe_save_name', None)
 ppe_load_name = params.get('ppe_load_name', None)
 
 log_dir = 'logs/MNIST'
-visualize = True
+visualize = False
 
 priors = params.get('\npriors', None)
 if priors is None:
     priors = [1/num_classes for _ in range(num_classes)]
-
-
-parser = argparse.ArgumentParser(description='Main File')
-
-parser.add_argument('--no-cuda', action='store_true', default=False,
-                    help='disables CUDA training')
-
-parser.add_argument('--random-seed', type=int, default=None)
-parser.add_argument('--learning_rate', type=float, default=1e-3)
-parser.add_argument('--weight_decay', type=float, default=1e-4)
-parser.add_argument('--rho', type=float, default=0.2)
-parser.add_argument('--u_per', type=float, default=0.5)
-parser.add_argument('--gamma', type=float, default=0.5)
-parser.add_argument('--adjust_p', default=True)
-parser.add_argument('--algo', type=int, default=0)
-parser.add_argument('--ppe-save-path', type=str, default=None)
-parser.add_argument('--ppe-load-path', type=str, default=None)
-
-args = parser.parse_args()
-args.cuda = not args.no_cuda and torch.cuda.is_available()
-
-if args.random_seed is not None:
-    params['\nrandom_seed'] = args.random_seed
-    random_seed = args.random_seed
-
-if args.ppe_save_path is not None:
-    params['ppe_save_name'] = args.ppe_save_path
-    ppe_save_name = args.ppe_save_path
-
-if args.ppe_load_path is not None:
-    params['ppe_load_name'] = args.ppe_load_path
-    ppe_load_name = args.ppe_load_path
 
 
 settings.dtype = torch.cuda.FloatTensor if args.cuda else torch.FloatTensor
@@ -179,8 +186,12 @@ def pick_p_data(data, labels, n):
 def pick_n_data(data, labels, n):
     n_idxs = np.zeros_like(labels)
     for i in range(num_classes):
-        if i not in positive_classes:
-            n_idxs[(labels == i).numpy().astype(bool)] = 1
+        if negative_classes is None:
+            if i not in positive_classes:
+                n_idxs[(labels == i).numpy().astype(bool)] = 1
+        else:
+            if i in negative_classes:
+                n_idxs[(labels == i).numpy().astype(bool)] = 1
     n_idxs = np.argwhere(n_idxs == 1).reshape(-1)
     selected_n = np.random.choice(n_idxs, n, replace=False)
     return data[selected_n], labels[selected_n]
@@ -200,7 +211,15 @@ def pick_sn_data(data, labels, n):
 
 
 def pick_u_data(data, labels, n):
-    selected_u = np.random.choice(len(data), n, replace=False)
+    if negative_classes is None:
+        selected_u = np.random.choice(len(data), n, replace=False)
+    else:
+        u_idxs = np.zeros_like(labels)
+        for i in range(num_classes):
+            if i in positive_classes or i in negative_classes:
+                u_idxs[(labels == i).numpy().astype(bool)] = 1
+        u_idxs = np.argwhere(u_idxs == 1).reshape(-1)
+        selected_u = np.random.choice(u_idxs, n, replace=False)
     return data[selected_u], posteriors(labels[selected_u])
 
 
@@ -241,13 +260,20 @@ t_labels = torch.zeros(test_labels.size())
 for i in range(num_classes):
     if i in positive_classes:
         t_labels[test_labels == i] = 1
-    else:
+    elif negative_classes is None or i in negative_classes:
         t_labels[test_labels == i] = -1
+    else:
+        t_labels[test_labels == i] = 0
 
 test_posteriors = posteriors(test_labels)
+test_idxs = np.argwhere(t_labels != 0).reshape(-1)
 
 test_set = torch.utils.data.TensorDataset(
-    test_data, t_labels.unsqueeze(1).float(), test_posteriors)
+    test_data[test_idxs],
+    t_labels.unsqueeze(1).float()[test_idxs],
+    test_posteriors[test_idxs])
+
+# print(len(test_set.tensors[0]))
 
 
 if pu_prob_est and ppe_load_name is None:
@@ -275,24 +301,24 @@ if ppe_load_name is not None:
 
 if (partial_n or (iwpn and (adjust_p or adjust_sn))) and not use_true_post:
     p_set = torch.utils.data.TensorDataset(
-        p_set.tensors[0], F.sigmoid(
+        p_set.tensors[0], torch.sigmoid(
             training.Training()
             .feed_in_batches(ppe_model, p_set.tensors[0])).cpu())
     sn_set = torch.utils.data.TensorDataset(
-        sn_set.tensors[0], F.sigmoid(
+        sn_set.tensors[0], torch.sigmoid(
             training.Training()
             .feed_in_batches(ppe_model, sn_set.tensors[0])).cpu())
     u_set = torch.utils.data.TensorDataset(
-        u_set.tensors[0], F.sigmoid(
+        u_set.tensors[0], torch.sigmoid(
             training.Training()
             .feed_in_batches(ppe_model, u_set.tensors[0])).cpu())
-    p_validation = p_validation[0], F.sigmoid(
+    p_validation = p_validation[0], torch.sigmoid(
         training.Training()
         .feed_in_batches(ppe_model, p_validation[0])).cpu()
-    sn_validation = sn_validation[0], F.sigmoid(
+    sn_validation = sn_validation[0], torch.sigmoid(
         training.Training()
         .feed_in_batches(ppe_model, sn_validation[0])).cpu()
-    u_validation = u_validation[0], F.sigmoid(
+    u_validation = u_validation[0], torch.sigmoid(
         training.Training()
         .feed_in_batches(ppe_model, u_validation[0])).cpu()
 
@@ -317,8 +343,8 @@ if partial_n:
               p_validation, sn_validation, u_validation,
               cls_training_epochs, convex_epochs=convex_epochs,
               vat=vat, ent=ent, alpha=alpha, beta=beta)
-    save_checkpoint(cls.model, cls_training_epochs,
-                    'weights/MNIST/135N/cls_1e-3_1')
+    # save_checkpoint(cls.model, cls_training_epochs,
+    #                 'weights/MNIST/135N/cls_1e-3_1')
 
 if iwpn:
     print('')
