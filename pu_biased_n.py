@@ -11,13 +11,13 @@ import training
 import settings
 from utils import save_checkpoint, load_checkpoint
 
-from cifar10.pu_biased_n import params, Net
-from cifar10.pu_biased_n import train_data, test_data
-from cifar10.pu_biased_n import train_labels, test_labels
+# from cifar10.pu_biased_n import params, Net
+# from cifar10.pu_biased_n import train_data, test_data
+# from cifar10.pu_biased_n import train_labels, test_labels
 
-# from mnist.pu_biased_n import params, Net
-# from mnist.pu_biased_n import train_data, test_data
-# from mnist.pu_biased_n import train_labels, test_labels
+from mnist.pu_biased_n import params, Net
+from mnist.pu_biased_n import train_data, test_data
+from mnist.pu_biased_n import train_labels, test_labels
 
 # from uci.pu_biased_n import params, Net
 # from uci.pu_biased_n import train_data, test_data

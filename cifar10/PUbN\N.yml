@@ -19,9 +19,9 @@ neg_ps: [0, 0, 0, 0, 0.25, 0.25, 0.25, 0.25, 0, 0]
 
 ? |-
 
-  learning_rate_ppe
+  learning_rate_cls
 : 0.001
-learning_rate_cls: 0.001
+learning_rate_ppe: 0.001
 weight_decay: 0.0001
 
 ? |-
@@ -36,12 +36,8 @@ use_true_post: False
 : True
 hard_label: False
 
-? |-
-
-  pn_then_pu
-: False
+pn_then_pu: False
 pu_then_pn: False
-iwpn: False
 pu: False
 pnu: False
 unbiased_pn: False

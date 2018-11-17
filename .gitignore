@@ -112,3 +112,5 @@ outdated/
 logs/
 weights/
 *.sh
+hyperparameter*
+launch_scripts*
