@@ -1,5 +1,19 @@
 ? |-
 
+  p_num
+: 500
+sn_num: 500
+u_num: 6000
+
+? |-
+
+  pv_num
+: 100
+snv_num: 100
+uv_num: 1200
+
+? |-
+
   pi
 : 0.49
 true_rho: 0
@@ -8,14 +22,26 @@ rho: 0
 ? |-
 
   positive_classes
-: [0, 2, 4, 6]
-negative_classes: [1, 3, 5, 7]
-neg_ps: [0, 0, 0, 0, 0, 0.25, 0, 0.25, 0.25, 0.25]
+: [0, 2, 4, 6, 8]
+negative_classes: [1, 3, 5, 7, 9]
 
 ? |-
 
   u_per
 : 0.9
+
+? |-
+
+  cls_training_epochs
+: 100
+convex_epochs: 100
+
+? |-
+
+  p_batch_size
+: 10
+sn_batch_size: 10
+u_batch_size: 120
 
 ? |-
 
@@ -27,17 +53,18 @@ weight_decay: 0.0001
 ? |-
 
   pu_prob_est
-: False
+: True
 use_true_post: False
 
 ? |-
 
   partial_n
-: False
+: True
 hard_label: False
 
 pn_then_pu: False
 pu_then_pn: False
-pu: True
+iwpn: False
+pu: False
 pnu: False
 unbiased_pn: False

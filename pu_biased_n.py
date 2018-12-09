@@ -1,6 +1,8 @@
 import argparse
+import importlib
 import random
 import yaml
+
 import numpy as np
 
 import torch
@@ -11,27 +13,14 @@ import training
 import settings
 from utils import save_checkpoint, load_checkpoint
 
-# from cifar10.pu_biased_n import params, Net
-# from cifar10.pu_biased_n import train_data, test_data
-# from cifar10.pu_biased_n import train_labels, test_labels
-
-from mnist.pu_biased_n import params, Net
-from mnist.pu_biased_n import train_data, test_data
-from mnist.pu_biased_n import train_labels, test_labels
-
-# from uci.pu_biased_n import params, Net
-# from uci.pu_biased_n import train_data, test_data
-# from uci.pu_biased_n import train_labels, test_labels
-
-# from newsgroups.pu_biased_n import params, Net
-# from newsgroups.pu_biased_n import train_data, test_data
-# from newsgroups.pu_biased_n import train_labels, test_labels
-
 
 parser = argparse.ArgumentParser(description='Main File')
 
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
+
+parser.add_argument('--dataset', type=str, default='mnist',
+                    help='Name of dataset: mnist, cifar10 or newsgroups')
 
 parser.add_argument('--random-seed', type=int, default=None)
 parser.add_argument('--learning_rate', type=float, default=1e-3)
@@ -47,6 +36,15 @@ parser.add_argument('--params-path', type=str, default=None)
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
+
+
+prepare_data = importlib.import_module(f'{args.dataset}.pu_biased_n')
+params = prepare_data.params
+Net = prepare_data.Net
+train_data = prepare_data.train_data
+test_data = prepare_data.test_data
+train_labels = prepare_data.train_labels
+test_labels = prepare_data.test_labels
 
 
 if args.params_path is not None:
@@ -451,8 +449,8 @@ if unbiased_pn:
                 milestones=milestones, lr_d=lr_d,
                 validation_momentum=validation_momentum,
                 start_validation_epoch=start_validation_epoch)
-        print(vat)
-        print(ent)
+        # print(vat)
+        # print(ent)
         cls.train(p_set, n_set, u_set, test_set,
                   p_batch_size, n_batch_size, u_batch_size,
                   p_validation, n_validation, u_validation,
@@ -487,5 +485,5 @@ if visualize:
     #                      metadata=embedding_labels,
     #                      tag='Input', global_step=0)
     writer.add_embedding(features, metadata=embedding_labels,
-                         tag='PUbN Features 2',
+                         tag='PUbN Features',
                          global_step=cls_training_epochs)
