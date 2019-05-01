@@ -25,7 +25,6 @@ uv_num = 1200
 u_cut = 40000
 
 pi = 0.49
-# pi = 0.097
 true_rho = 0.25
 rho = 0.25
 
@@ -33,10 +32,7 @@ positive_classes = [0, 2, 4, 6, 8]
 negative_classes = [1, 3, 5, 7, 9]
 
 # neg_ps = [0, 0.03, 0, 0.15, 0, 0.3, 0, 0.02, 0, 0.5]
-# neg_ps = [0, 0.2, 0, 0.2, 0, 0.2, 0, 0.2, 0, 0.2]
 neg_ps = [0, 1/3, 0, 1/3, 0, 1/3, 0, 0, 0, 0]
-# neg_ps = [1/6, 1/6, 1/6, 1/6, 0, 1/6, 1/6, 0, 0, 0]
-# neg_ps = [0, 0, 0, 0, 0, 1/4, 0, 1/4, 1/4, 1/4]
 
 non_pu_fraction = 0.7
 balanced = False
@@ -56,9 +52,7 @@ u_batch_size = 120
 learning_rate_ppe = 1e-3
 learning_rate_cls = 1e-3
 weight_decay = 1e-4
-validation_momentum = 0
 
-start_validation_epoch = 0
 milestones = [200]
 
 non_negative = True
@@ -79,12 +73,6 @@ iwpn = False
 pu = False
 pnu = False
 unbiased_pn = True
-
-vat = False
-ent = False
-
-alpha = 1
-beta = 0.8
 
 random_seed = 10
 
@@ -124,8 +112,6 @@ params = OrderedDict([
     ('\nlearning_rate_cls', learning_rate_cls),
     ('learning_rate_ppe', learning_rate_ppe),
     ('weight_decay', weight_decay),
-    ('validation_momentum', validation_momentum),
-    ('\nstart_validation_epoch', start_validation_epoch),
     ('milestones', milestones),
     ('\nnon_negative', non_negative),
     ('nn_threshold', nn_threshold),
@@ -140,10 +126,6 @@ params = OrderedDict([
     ('pu', pu),
     ('pnu', pnu),
     ('unbiased_pn', unbiased_pn),
-    ('\nvat', vat),
-    ('ent', ent),
-    ('alpha', alpha),
-    ('beta', beta),
     ('\nrandom_seed', random_seed),
     ('\nppe_save_name', ppe_save_name),
     ('ppe_load_name', ppe_load_name),
@@ -206,33 +188,3 @@ class Net(nn.Module):
         x = F.dropout(x, training=self.training)
         x = self.fc2(x)
         return x
-
-
-def call_bn(bn, x, update_batch_stats=True):
-    if bn.training is False:
-        return bn(x)
-    elif not update_batch_stats:
-        return F.batch_norm(x, None, None, bn.weight, bn.bias, True,
-                            bn.momentum, bn.eps)
-    else:
-        return bn(x)
-
-
-# Following this repository
-# https://github.com/musyoku/vat
-class FcNet(nn.Module):
-    def __init__(self, n_class=1, n_ch=1, res=28):
-        super(FcNet, self).__init__()
-        self.input_len = n_ch * res * res
-        self.fc1 = nn.Linear(self.input_len, 1200)
-        self.fc2 = nn.Linear(1200, 600)
-        self.fc3 = nn.Linear(600, n_class)
-
-        self.bn_fc1 = nn.BatchNorm1d(1200)
-        self.bn_fc2 = nn.BatchNorm1d(600)
-
-    def __call__(self, x, update_batch_stats=True):
-        h = F.relu(call_bn(self.bn_fc1, self.fc1(x.view(-1, self.input_len)),
-                           update_batch_stats))
-        h = F.relu(call_bn(self.bn_fc2, self.fc2(h), update_batch_stats))
-        return self.fc3(h)

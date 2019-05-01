@@ -14,11 +14,8 @@ import settings
 
 class Training(object):
 
-    def __init__(self, model=None,
-                 lr=5e-3, weight_decay=1e-2,
-                 validation_momentum=0.5,
-                 milestones=None, start_validation_epoch=0,
-                 lr_d=0.1, balanced=False):
+    def __init__(self, model=None, lr=5e-3, weight_decay=1e-2,
+                 milestones=None, lr_d=0.1, balanced=False):
         self.times = 0
         self.model = model
         self.lr = lr
@@ -29,10 +26,7 @@ class Training(object):
             self.milestones = milestones
         self.lr_d = lr_d
         self.balanced = balanced
-        self.validation_momentum = validation_momentum
-        self.start_validation_epoch = start_validation_epoch
         self.min_vloss = float('inf')
-        self.curr_accu_vloss = None
         self.final_model = None
         self.test_accuracies = []
 
@@ -46,15 +40,8 @@ class Training(object):
     def validation(self, *args):
         _, validation_loss = self.compute_loss(*args, validation=True)
         print('Validation Loss:', validation_loss.item(), flush=True)
-        if self.curr_accu_vloss is None:
-            self.curr_accu_vloss = validation_loss.item()
-        else:
-            self.curr_accu_vloss = (
-                self.curr_accu_vloss * self.validation_momentum
-                + validation_loss.item() * (1-self.validation_momentum))
-        if (self.curr_accu_vloss < self.min_vloss
-                and self.times > self.start_validation_epoch):
-            self.min_vloss = self.curr_accu_vloss
+        if validation_loss.item() < self.min_vloss:
+            self.min_vloss = validation_loss.item()
             self.final_model = deepcopy(self.model)
         return validation_loss
 
@@ -421,24 +408,8 @@ class ClassifierFrom3(Classifier):
         return loss.cpu(), loss.cpu()
 
 
-class SSLClassifier(ClassifierFrom3):
-
-    def __init__(self, model, *args, **kwargs):
-        super().__init__(model, *args, **kwargs)
-
-    def compute_loss(self, px, nx, ux, convex, validation=False):
-        if validation:
-            fpx = self.feed_in_batches(self.model, px[0])
-            fnx = self.feed_in_batches(self.model, nx[0])
-            convex = False
-        fpx, fnx, fux = self.feed_together(self.model, px[0], nx[0], ux[0])
-        p_loss = self.pi * torch.mean(self.basic_loss(fpx, convex))
-        n_loss = (1-self.pi) * torch.mean(self.basic_loss(-fnx, convex))
-        loss = p_loss + n_loss
-        return loss.cpu(), loss.cpu()
-
-
 class PUClassifier3(ClassifierFrom3):
+    """This classifier is used in the first step of PUbN learning"""
 
     def __init__(self, model,
                  nn=True, nn_threshold=0, nn_rate=1/2,
@@ -515,15 +486,8 @@ class PUClassifier3(ClassifierFrom3):
         print('Validation Log Loss:', logistic_loss.cpu().item(), flush=True)
         sigmoid_loss = p_loss[1] + sn_loss[1] + n_loss[1]
         print('Validation Sig Loss:', sigmoid_loss.cpu().item(), flush=True)
-        if self.curr_accu_vloss is None:
-            self.curr_accu_vloss = ls_loss.cpu().item()
-        else:
-            self.curr_accu_vloss = (
-                self.curr_accu_vloss * self.validation_momentum
-                + ls_loss.cpu().item() * (1-self.validation_momentum))
-        if (self.curr_accu_vloss < self.min_vloss
-                and self.times > self.start_validation_epoch):
-            self.min_vloss = self.curr_accu_vloss
+        if ls_loss.item() < self.min_vloss:
+            self.min_vloss = ls_loss.item()
             self.final_model = deepcopy(self.model)
         return ls_loss
 
@@ -669,11 +633,6 @@ class PUbNClassifier(ClassifierFrom3):
             loss = p_loss + sn_loss + u_loss
         return loss.cpu(), loss.cpu()
 
-    def test(self, *args, **kwargs):
-        super().test(*args, **kwargs)
-        # print('a', self.a)
-        # print('b', self.b)
-
 
 class ThreeClassifier(ClassifierFrom3):
 
@@ -738,53 +697,3 @@ class ThreeClassifier(ClassifierFrom3):
             pred = -torch.ones(labels.size())
             pred[torch.argmax(output, dim=1) == 0] = 1
         self.compute_classification_metrics(labels, pred, output, to_print)
-
-
-class MultiClassClassifier(Classifier):
-
-    def train(self, training_set, test_set,
-              batch_size, num_epochs,
-              test_interval=1, print_interval=1):
-
-        self.init_optimizer()
-        self.test(test_set)
-
-        train_loader = torch.utils.data.DataLoader(
-            training_set, batch_size=batch_size,
-            shuffle=True, num_workers=0)
-
-        for epoch in range(num_epochs):
-
-            average_loss = self.train_step(train_loader)
-
-            if (epoch+1) % test_interval == 0 or epoch+1 == num_epochs:
-
-                to_print = (epoch+1) % print_interval == 0
-                if to_print:
-                    sys.stdout.write('Epoch: {}  '.format(epoch))
-                    print('Train Loss: {:.6f}'.format(average_loss))
-                self.test(test_set)
-
-    def train_step(self, train_loader):
-        self.scheduler.step()
-        losses = []
-        for i, (x, target) in enumerate(train_loader):
-            self.model.train()
-            self.optimizer.zero_grad()
-            output = self.model(x.type(settings.dtype)).cpu()
-            loss = F.cross_entropy(output, target)
-            losses.append(loss.item())
-            loss.backward()
-            self.optimizer.step()
-        self.optimizer.zero_grad()
-        return np.mean(np.array(losses))
-
-    def test(self, test_set):
-        x = test_set.tensors[0]
-        labels = test_set.tensors[1]
-        output = self.feed_in_batches(self.model, x, settings.test_batch_size)
-        pred = output.max(1, keepdim=True)[1].cpu()
-        correct = pred.eq(labels.view_as(pred)).sum().item()
-        print('\nTest set: Accuracy: {}/{} ({:.0f}%)\n'.format(
-            correct, len(test_set),
-            100. * correct / len(test_set)))

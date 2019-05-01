@@ -1,0 +1,74 @@
+? |-
+
+  p_num
+: 1000
+sn_num: 1000
+u_num: 10000
+
+? |-
+
+  pv_num
+: 200
+snv_num: 200
+uv_num: 2000
+
+? |-
+
+  pi
+: 0.4
+
+? |-
+
+  positive_classes
+: [3, 4, 5, 7]
+negative_classes: [0, 1, 2, 6, 8, 9]
+neg_ps: [0, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0]
+
+? |-
+
+  non_pu_fraction
+: 0.1
+
+? |-
+
+  cls_training_epochs
+: 200
+convex_epochs: 200
+
+? |-
+
+  p_batch_size
+: 10
+sn_batch_size: 10
+u_batch_size: 100
+
+? |-
+
+  learning_rate_cls
+: 0.001
+weight_decay: 0.0001
+
+? |-
+
+  non_negative
+: True
+nn_threshold: 0
+nn_rate: 1
+
+? |-
+
+  pu_prob_est
+: False
+use_true_post: False
+
+? |-
+
+  partial_n
+: False
+
+pn_then_pu: False
+pu_then_pn: False
+iwpn: False
+pu: False
+pnu: True
+unbiased_pn: False

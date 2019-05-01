@@ -1,21 +1,44 @@
 ? |-
 
+  p_num
+: 1000
+u_num: 10000
+
+? |-
+
+  pv_num
+: 200
+uv_num: 2000
+
+? |-
+
   pi
-: 0.5
-true_rho: 0.25
-rho: 0.25
+: 0.4
+true_rho: 0
+rho: 0
 
 ? |-
 
   positive_classes
-: [0, 1, 8, 9]
-negative_classes: [2, 3, 4, 5]
-neg_ps: [0, 0, 0, 0, 0.25, 0.25, 0.25, 0.25, 0, 0]
+: [3, 4, 5, 7]
+negative_classes: [0, 1, 2, 6, 8, 9]
 
 ? |-
 
   u_per
 : 0.7
+
+? |-
+
+  cls_training_epochs
+: 200
+convex_epochs: 200
+
+? |-
+
+  p_batch_size
+: 10
+u_batch_size: 100
 
 ? |-
 
@@ -34,10 +57,10 @@ use_true_post: False
 
   partial_n
 : True
-hard_label: False
 
 pn_then_pu: False
 pu_then_pn: False
+iwpn: False
 pu: False
 pnu: False
 unbiased_pn: False

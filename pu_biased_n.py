@@ -27,16 +27,9 @@ parser.add_argument('--dataset', type=str, default='mnist',
                     help='Name of dataset: mnist, cifar10 or newsgroups')
 
 parser.add_argument('--random-seed', type=int, default=None)
-parser.add_argument('--learning_rate', type=float, default=1e-3)
-parser.add_argument('--weight_decay', type=float, default=1e-4)
-parser.add_argument('--rho', type=float, default=0.2)
-parser.add_argument('--u_per', type=float, default=0.5)
-parser.add_argument('--gamma', type=float, default=0.5)
-parser.add_argument('--adjust_p', default=True)
-parser.add_argument('--algo', type=int, default=0)
+parser.add_argument('--params-path', type=str, default=None)
 parser.add_argument('--ppe-save-path', type=str, default=None)
 parser.add_argument('--ppe-load-path', type=str, default=None)
-parser.add_argument('--params-path', type=str, default=None)
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -92,10 +85,10 @@ positive_classes = params['\npositive_classes']
 negative_classes = params.get('negative_classes', None)
 neg_ps = params['neg_ps']
 
-non_pu_fraction = params['\nnon_pu_fraction']
+non_pu_fraction = params['\nnon_pu_fraction']  # gamma
 balanced = params['balanced']
 
-u_per = params['\nu_per']
+u_per = params['\nu_per']  # tau
 adjust_p = params['adjust_p']
 adjust_sn = params['adjust_sn']
 
@@ -109,20 +102,18 @@ u_batch_size = params['u_batch_size']
 
 learning_rate_cls = params['\nlearning_rate_cls']
 weight_decay = params['weight_decay']
-validation_momentum = params['validation_momentum']
 
 if 'learning_rate_ppe' in params:
     learning_rate_ppe = params['learning_rate_ppe']
 else:
     learning_rate_ppe = learning_rate_cls
 
-start_validation_epoch = params.get('\nstart_validation_epoch', 0)
 milestones = params.get('milestones', [1000])
-milestones_ppe = params.get('milestones', milestones)
+milestones_ppe = params.get('milestones_ppe', milestones)
 lr_d = params.get('lr_d', 1)
 
 non_negative = params['\nnon_negative']
-nn_threshold = params['nn_threshold']
+nn_threshold = params['nn_threshold']  # beta
 nn_rate = params['nn_rate']
 
 cbs_feature = params.get('\ncbs_feature', False)
@@ -136,22 +127,16 @@ svm_C = params.get('svm_C', 1)
 pu_prob_est = params['\npu_prob_est']
 use_true_post = params['use_true_post']
 
-partial_n = params['\npartial_n']
+partial_n = params['\npartial_n']  # PUbN
 hard_label = params['hard_label']
 
 pn_then_pu = params.get('pn_then_pu', False)
-pu_then_pn = params.get('pu_then_pn', False)
+pu_then_pn = params.get('pu_then_pn', False)  # PU -> PN
 
 iwpn = params['\niwpn']
 pu = params['pu']
 pnu = params['pnu']
 unbiased_pn = params.get('unbiased_pn', False)
-
-vat = params.get('\nvat', False)
-ent = params.get('ent', False)
-
-alpha = params.get('alpha', 1)
-beta = params.get('beta', 1)
 
 random_seed = params['\nrandom_seed']
 
@@ -381,9 +366,7 @@ if pu_prob_est and ppe_load_name is None:
             model, pi=pi, rho=rho,
             lr=learning_rate_ppe, weight_decay=weight_decay,
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
-            milestones=milestones_ppe, lr_d=lr_d,
-            prob_est=True, validation_momentum=validation_momentum,
-            start_validation_epoch=start_validation_epoch)
+            milestones=milestones_ppe, lr_d=lr_d, prob_est=True)
     ppe.train(p_set, sn_set, u_set, test_set,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
@@ -420,6 +403,7 @@ if (partial_n or (iwpn and (adjust_p or adjust_sn))) and not use_true_post:
         training.Training()
         .feed_in_batches(ppe_model, u_validation[0])).cpu()
 
+# eta
 sep_value = np.percentile(
     u_set.tensors[1].numpy().reshape(-1), int((1-pi-true_rho)*u_per*100))
 print('\nsep_value =', sep_value)
@@ -456,16 +440,11 @@ if partial_n:
             sep_value=sep_value,
             adjust_p=adjust_p, adjust_sn=adjust_sn, hard_label=hard_label,
             lr=learning_rate_cls, weight_decay=weight_decay,
-            milestones=milestones, lr_d=lr_d,
-            validation_momentum=validation_momentum,
-            start_validation_epoch=start_validation_epoch)
+            milestones=milestones, lr_d=lr_d)
     cls.train(p_set, sn_set, u_set, test_set,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
-              cls_training_epochs, convex_epochs=convex_epochs,
-              vat=vat, ent=ent, alpha=alpha, beta=beta)
-    # save_checkpoint(cls.model, cls_training_epochs,
-    #                 'weights/MNIST/135N/cls_1e-3_1')
+              cls_training_epochs, convex_epochs=convex_epochs)
 
 if iwpn:
     print('')
@@ -474,9 +453,7 @@ if iwpn:
             model, pi=pi/(pi+rho),
             adjust_p=adjust_p, adjust_n=adjust_sn,
             lr=learning_rate_cls, weight_decay=weight_decay,
-            milestones=milestones, lr_d=lr_d,
-            validation_momentum=validation_momentum,
-            start_validation_epoch=start_validation_epoch)
+            milestones=milestones, lr_d=lr_d)
     cls.train(p_set, sn_set, test_set, p_batch_size, sn_batch_size,
               p_validation, sn_validation,
               cls_training_epochs, convex_epochs=convex_epochs)
@@ -487,9 +464,7 @@ if pn_then_pu:
     cls = training.PNClassifier(
             model, pi=pi/(pi+rho),
             lr=learning_rate_cls, weight_decay=weight_decay,
-            milestones=milestones, lr_d=lr_d,
-            validation_momentum=validation_momentum,
-            start_validation_epoch=start_validation_epoch)
+            milestones=milestones, lr_d=lr_d)
     cls.train(p_set, sn_set, test_set, p_batch_size, sn_batch_size,
               p_validation, sn_validation,
               cls_training_epochs, convex_epochs=convex_epochs)
@@ -499,9 +474,7 @@ if pn_then_pu:
             model, pn_model=cls.model, pi=pi, balanced=balanced,
             lr=learning_rate_cls, weight_decay=weight_decay,
             milestones=milestones, lr_d=lr_d,
-            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
-            validation_momentum=validation_momentum,
-            start_validation_epoch=start_validation_epoch)
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
     cls2.train(p_set, u_set, test_set, p_batch_size, u_batch_size,
                p_validation, u_validation,
                cls_training_epochs, convex_epochs=convex_epochs)
@@ -513,9 +486,7 @@ if pu_then_pn:
             model, pi=pi, rho=rho,
             lr=learning_rate_ppe, weight_decay=weight_decay,
             nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
-            milestones=milestones, lr_d=lr_d,
-            validation_momentum=validation_momentum,
-            start_validation_epoch=start_validation_epoch)
+            milestones=milestones, lr_d=lr_d)
     cls.train(p_set, sn_set, u_set, test_set,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
@@ -526,8 +497,7 @@ if pu_then_pn:
     cls2 = training.PNClassifier(
             model, pi=pi/(pi+rho), pu_model=cls.model,
             lr=learning_rate_cls, weight_decay=weight_decay,
-            milestones=milestones, lr_d=lr_d,
-            start_validation_epoch=start_validation_epoch)
+            milestones=milestones, lr_d=lr_d)
     cls2.train(p_set, sn_set, test_set, p_batch_size, sn_batch_size,
                p_validation, sn_validation,
                cls_training_epochs, convex_epochs=convex_epochs)
@@ -539,9 +509,7 @@ if pu:
             model, pi=pi, balanced=balanced,
             lr=learning_rate_cls, weight_decay=weight_decay,
             milestones=milestones, lr_d=lr_d,
-            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
-            validation_momentum=validation_momentum,
-            start_validation_epoch=start_validation_epoch)
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
     cls.train(p_set, u_set, test_set, p_batch_size, u_batch_size,
               p_validation, u_validation,
               cls_training_epochs, convex_epochs=convex_epochs)
@@ -554,9 +522,7 @@ if pnu:
             lr=learning_rate_cls, weight_decay=weight_decay,
             milestones=milestones, lr_d=lr_d,
             pn_fraction=non_pu_fraction,
-            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate,
-            validation_momentum=validation_momentum,
-            start_validation_epoch=start_validation_epoch)
+            nn=non_negative, nn_threshold=nn_threshold, nn_rate=nn_rate)
     cls.train(p_set, sn_set, u_set, test_set,
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
@@ -565,30 +531,13 @@ if pnu:
 if unbiased_pn:
     print('')
     model = Net().cuda() if args.cuda else Net()
-    if vat or ent:
-        cls = training.SSLClassifier(
-                model, pi=pi,
-                lr=learning_rate_cls, weight_decay=weight_decay,
-                milestones=milestones, lr_d=lr_d,
-                validation_momentum=validation_momentum,
-                start_validation_epoch=start_validation_epoch)
-        # print(vat)
-        # print(ent)
-        cls.train(p_set, n_set, u_set, test_set,
-                  p_batch_size, n_batch_size, u_batch_size,
-                  p_validation, n_validation, u_validation,
-                  cls_training_epochs, convex_epochs=convex_epochs,
-                  vat=vat, ent=ent, alpha=alpha, beta=beta)
-    else:
-        cls = training.PNClassifier(
-                model, pi=pi,
-                lr=learning_rate_cls, weight_decay=weight_decay,
-                milestones=milestones, lr_d=lr_d,
-                validation_momentum=validation_momentum,
-                start_validation_epoch=start_validation_epoch)
-        cls.train(p_set, sn_set, test_set, p_batch_size, sn_batch_size,
-                  p_validation, sn_validation,
-                  cls_training_epochs, convex_epochs=convex_epochs)
+    cls = training.PNClassifier(
+            model, pi=pi,
+            lr=learning_rate_cls, weight_decay=weight_decay,
+            milestones=milestones, lr_d=lr_d)
+    cls.train(p_set, sn_set, test_set, p_batch_size, sn_batch_size,
+              p_validation, sn_validation,
+              cls_training_epochs, convex_epochs=convex_epochs)
 
 
 n_embedding_points = 500

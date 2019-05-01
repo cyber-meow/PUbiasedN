@@ -21,21 +21,19 @@ uv_num = 2000
 
 u_cut = 40000
 
-pi = 0.5
-true_rho = 0.25
-rho = 0.25
+pi = 0.4
+true_rho = 0.3
+rho = 0.3
 
-# positive_classes = [3, 4, 5, 7]
-# positive_classes = [1]
 positive_classes = [0, 1, 8, 9]
-negative_classes = [2, 3, 4, 5]
+negative_classes = [2, 3, 4, 5, 6, 7]
+# positive_classes = [3, 4, 5, 7]
+# negative_classes = [0, 1, 2, 6, 8, 9]
 
+neg_ps = [0, 0, 0, 1/3, 0, 1/3, 0, 1/3, 0, 0]
+# neg_ps = [0, 0, 0.1, 0.02, 0.2, 0.08, 0.2, 0.4, 0, 0]
 # neg_ps = [0, 0, 1/2, 0, 0, 0, 1/2, 0, 0, 0]
 # neg_ps = [0, 1/2, 0, 0, 0, 0, 0, 0, 0, 1/2]
-# neg_ps = [0, 0, 0, 1/3, 0, 1/3, 0, 1/3, 0, 0]
-# neg_ps = [0, 0, 0.1, 0.02, 0.2, 0.08, 0.2, 0.4, 0, 0]
-# neg_ps = [0, 0, 1/6, 1/6, 1/6, 1/6, 1/6, 1/6, 0, 0]
-neg_ps = [0, 0, 0, 0, 1/4, 1/4, 1/4, 1/4, 0, 0]
 
 
 non_pu_fraction = 0.5
@@ -55,9 +53,7 @@ u_batch_size = 100
 learning_rate_ppe = 1e-3
 learning_rate_cls = 1e-3
 weight_decay = 1e-4
-validation_momentum = 0
 
-start_validation_epoch = 0
 milestones = [80, 120]
 lr_d = 0.1
 
@@ -75,11 +71,6 @@ pu_then_pn = False
 iwpn = False
 pu = False
 pnu = False
-
-vat = False
-ent = False
-alpha = 1
-beta = 0.8
 
 random_seed = 0
 
@@ -119,8 +110,6 @@ params = OrderedDict([
     ('\nlearning_rate_cls', learning_rate_cls),
     ('learning_rate_ppe', learning_rate_ppe),
     ('weight_decay', weight_decay),
-    ('validation_momentum', validation_momentum),
-    ('\nstart_validation_epoch', start_validation_epoch),
     ('milestones', milestones),
     ('lr_d', lr_d),
     ('\nnon_negative', non_negative),
@@ -134,12 +123,8 @@ params = OrderedDict([
     ('pu_then_pn', pu_then_pn),
     ('pu', pu),
     ('pnu', pnu),
-    ('\nvat', vat),
-    ('ent', ent),
-    ('alpha', alpha),
-    ('beta', beta),
     ('\nrandom_seed', random_seed),
-    ('ppe_save_name', ppe_save_name),
+    ('\nppe_save_name', ppe_save_name),
     ('ppe_load_name', ppe_load_name),
 ])
 
