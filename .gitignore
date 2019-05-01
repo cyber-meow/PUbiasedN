@@ -114,5 +114,6 @@ gaussian/
 *.png
 *.swp
 *.p
+*.ipynb
 hyperparameter*
 launch_scripts*
