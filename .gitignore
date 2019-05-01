@@ -111,6 +111,7 @@ weights/
 uci/
 gaussian/
 scripts/
+plot_scripts/
 *.sh
 *.png
 *.swp
@@ -121,3 +122,4 @@ launch_scripts*
 vat*
 multi*
 pu_biased_n_sep.py
+perfect_classifier.py
