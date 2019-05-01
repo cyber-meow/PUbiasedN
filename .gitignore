@@ -110,6 +110,7 @@ logs/
 weights/
 uci/
 gaussian/
+scripts/
 *.sh
 *.png
 *.swp
@@ -117,3 +118,5 @@ gaussian/
 *.ipynb
 hyperparameter*
 launch_scripts*
+vat*
+multi*
