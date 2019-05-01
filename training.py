@@ -10,7 +10,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 import settings
-from vat import VAT, entropy_regularization
 
 
 class Training(object):
@@ -345,7 +344,6 @@ class ClassifierFrom3(Classifier):
               p_batch_size, sn_batch_size, u_batch_size,
               p_validation, sn_validation, u_validation,
               num_epochs, convex_epochs=5,
-              vat=False, ent=False, alpha=1, beta=1,
               test_interval=1, print_interval=1):
 
         self.init_optimizer()
@@ -371,8 +369,7 @@ class ClassifierFrom3(Classifier):
             convex = True if epoch < convex_epochs else False
             avg_loss = self.train_step(
                 p_loader, sn_loader, u_loader,
-                p_validation, sn_validation, u_validation, convex,
-                vat, ent, alpha, beta)
+                p_validation, sn_validation, u_validation, convex)
 
             if (epoch+1) % test_interval == 0 or epoch+1 == num_epochs:
 
@@ -388,8 +385,7 @@ class ClassifierFrom3(Classifier):
             self.test(test_set, True)
 
     def train_step(self, p_loader, sn_loader, u_loader,
-                   p_validation, sn_validation, u_validation,
-                   convex, vat=False, ent=False, alpha=1, beta=1):
+                   p_validation, sn_validation, u_validation, convex):
         self.scheduler.step()
         self.times += 1
         losses = []
@@ -400,28 +396,14 @@ class ClassifierFrom3(Classifier):
             else:
                 snx = None
             ux = next(iter(u_loader))
-            additional_loss = torch.tensor(0).type(settings.dtype)
-            if vat:
-                vat_loss = VAT(xi=10, eps=0.1, ip=1)
-                lds = alpha * vat_loss(self.model, ux[0].type(settings.dtype))
-                additional_loss += lds
-            if ent:
-                ent_loss = beta * entropy_regularization(
-                    self.model, ux[0].type(settings.dtype))
-                additional_loss += ent_loss
             loss, true_loss = self.compute_loss(x, snx, ux, convex)
             losses.append(true_loss.item())
-            loss += additional_loss.cpu()
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
             if (i+1) % settings.validation_interval == 0:
                 self.validation(
                     p_validation, sn_validation, u_validation, convex)
-        if vat:
-            print('Training VAT loss', lds.item())
-        if ent:
-            print('Training ENT loss', ent_loss.item())
         print('Training CE loss', true_loss.item())
         return np.mean(np.array(losses))
 
