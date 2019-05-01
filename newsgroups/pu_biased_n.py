@@ -5,51 +5,61 @@ import numpy as np
 import torch
 import torch.utils.data
 import torch.nn as nn
-import torch.nn.functional as F
-from sklearn import preprocessing
+# import torch.nn.functional as F
+# from sklearn import preprocessing
 from sklearn.datasets import fetch_20newsgroups
-# from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 import settings
 
 
+cbs_feature = False
+cbs_feature_later = False
+n_select_features = 2400
+cbs_alpha = 6
+cbs_beta = 4
+svm = False
+svm_C = 1
+
 num_classes = 20
-num_input = 9216
+num_input = 10000
 
-p_num = 500
+p_num = 600
 n_num = 500
-sn_num = 500
-u_num = 6000
+sn_num = 400
+u_num = 500
 
-pv_num = 100
-nv_num = 100
-snv_num = 100
-uv_num = 1200
+pv_num = 10
+nv_num = 10
+snv_num = 8
+uv_num = 10
 
-u_cut = 8000
+u_cut = 11000
 
+# pi = 0.26
 pi = 0.56
-true_rho = 0.17
+# true_rho = 0.17
 # rho = 0.21
 rho = 0.17
 # rho = 0.1
+true_rho = rho
 
 positive_classes = [i for i in range(11)]
+# positive_classes = [i for i in range(1, 6)]
 
 # neg_ps = [0] * 11 + [0.25] * 4 + [0] * 5
 neg_ps = [0] * 16 + [0.28, 0.29, 0.24, 0.19]
 # neg_ps = [0] * 11 + [0.025] * 4 + [0.5] + [0.112, 0.116, 0.096, 0.076]
 
-
 non_pu_fraction = 0.5
 balanced = False
 
-u_per = 0.5
+u_per = 0.7
 adjust_p = True
 adjust_sn = True
 
-cls_training_epochs = 50
-convex_epochs = 50
+cls_training_epochs = 20
+convex_epochs = 20
 
 p_batch_size = 10
 n_batch_size = 10
@@ -57,17 +67,17 @@ sn_batch_size = 10
 u_batch_size = 120
 
 learning_rate_ppe = 1e-3
-learning_rate_cls = 5e-4
+learning_rate_cls = 5e-3
 weight_decay = 1e-4
 validation_momentum = 0
 
 start_validation_epoch = 0
-milestones = [200]
+milestones = [20]
 milestones_ppe = [200]
 lr_d = 0.1
 
 non_negative = True
-nn_threshold = 0
+nn_threshold = -0.2
 nn_rate = 1
 
 settings.validation_interval = 50
@@ -84,6 +94,10 @@ pnu = False
 unbiased_pn = False
 
 random_seed = 0
+
+ppe_save_name = None
+# ppe_save_name = 'weights/newsgroups/imbN/500-100-400-200_lr1e-3_3'
+ppe_load_name = None
 
 
 params = OrderedDict([
@@ -124,6 +138,13 @@ params = OrderedDict([
     ('\nnon_negative', non_negative),
     ('nn_threshold', nn_threshold),
     ('nn_rate', nn_rate),
+    ('\ncbs_feature', cbs_feature),
+    ('cbs_feature_later', cbs_feature_later),
+    ('cbs_alpha', cbs_alpha),
+    ('cbs_beta', cbs_beta),
+    ('n_select_features', n_select_features),
+    ('svm', svm),
+    ('svm_C', svm_C),
     ('\npu_prob_est', pu_prob_est),
     ('use_true_post', use_true_post),
     ('\npartial_n', partial_n),
@@ -133,10 +154,19 @@ params = OrderedDict([
     ('pnu', pnu),
     ('unbiased_pn', unbiased_pn),
     ('\nrandom_seed', random_seed),
+    ('\nppe_save_name', ppe_save_name),
+    ('ppe_load_name', ppe_load_name),
 ])
 
 
-# vectorizer = TfidfVectorizer(min_df=0.001)
+vectorizer = TfidfVectorizer(max_features=num_input,
+                             max_df=0.95, stop_words='english')
+# vectorizer2 = TfidfVectorizer(max_features=num_input,
+#                               ngram_range=(2, 2),
+#                               max_df=0.95, stop_words='english')
+# vectorizer3 = TfidfVectorizer(max_features=num_input,
+#                               ngram_range=(3, 3),
+#                               max_df=0.95, stop_words='english')
 
 glove_train_f = h5py.File(
     'data/20newsgroups/20newsgroups_glove_mmm_train.hdf5', 'r')
@@ -146,10 +176,16 @@ elmo_train_f = h5py.File(
 # train_data = np.concatenate(
 #                 [glove_train_f['data'][:], elmo_train_f['data'][:]],
 #                 axis=1)
-train_data = elmo_train_f['data'][:]
-train_data = preprocessing.scale(train_data)
+# train_data = elmo_train_f['data'][:]
+# train_data = preprocessing.scale(train_data)
 newsgroups_train = fetch_20newsgroups(subset='train')
-# train_data = vectorizer.fit_transform(newsgroups_train.data).todense()
+train_data = vectorizer.fit_transform(newsgroups_train.data).toarray()
+# train_data2 = vectorizer2.fit_transform(newsgroups_train.data).toarray()
+# train_data3 = vectorizer3.fit_transform(newsgroups_train.data).toarray()
+# train_data = np.concatenate([
+#     np.expand_dims(train_data, 1),
+#     np.expand_dims(train_data2, 1),
+#     np.expand_dims(train_data3, 1)], axis=1)
 train_labels = newsgroups_train.target
 
 glove_test_f = h5py.File(
@@ -160,10 +196,16 @@ elmo_test_f = h5py.File(
 # test_data = np.concatenate(
 #                 [glove_test_f['data'][:], elmo_test_f['data'][:]],
 #                 axis=1)
-test_data = elmo_test_f['data'][:]
-test_data = preprocessing.scale(test_data)
+# test_data = elmo_test_f['data'][:]
+# test_data = preprocessing.scale(test_data)
 newsgroups_test = fetch_20newsgroups(subset='test')
-# test_data = vectorizer.transform(newsgroups_test.data).todense()
+test_data = vectorizer.transform(newsgroups_test.data).toarray()
+# test_data2 = vectorizer2.transform(newsgroups_test.data).toarray()
+# test_data3 = vectorizer3.transform(newsgroups_test.data).toarray()
+# test_data = np.concatenate([
+#     np.expand_dims(test_data, 1),
+#     np.expand_dims(test_data2, 1),
+#     np.expand_dims(test_data3, 1)], axis=1)
 test_labels = newsgroups_test.target
 
 
@@ -174,23 +216,37 @@ for i in range(num_classes):
         / (len(train_labels) + len(test_labels)))
 params['\npriors'] = priors
 
-train_data = torch.tensor(train_data)
+if not cbs_feature:
+    train_data = torch.tensor(train_data)
 train_labels = torch.tensor(train_labels)
 
-test_data = torch.tensor(test_data)
+if not cbs_feature:
+    test_data = torch.tensor(test_data)
 test_labels = torch.tensor(test_labels)
 
 
 class Net(nn.Module):
 
-    def __init__(self, num_classes=1):
+    def __init__(self):
         super(Net, self).__init__()
-        self.fc1 = nn.Linear(9216, 300)
-        self.fc2 = nn.Linear(300, 300)
-        self.fc3 = nn.Linear(300, num_classes)
+        self.fc1 = nn.Linear(num_input, 1)
+        # self.fc1 = nn.Linear(9216, 300)
+        # self.fc2 = nn.Linear(300, 300)
+        # self.fc3 = nn.Linear(300, 1)
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
+        # x = F.relu(self.fc1(x))
+        # x = F.relu(self.fc2(x))
+        x = self.fc1(x)
+        return x
+
+
+class NetCBS(nn.Module):
+
+    def __init__(self):
+        super(NetCBS, self).__init__()
+        self.fc1 = nn.Linear(5, 1)
+
+    def forward(self, x):
+        x = self.fc1(x)
         return x

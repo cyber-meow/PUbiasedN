@@ -9,9 +9,13 @@ import torch
 import torch.utils.data
 from tensorboardX import SummaryWriter
 
+from sklearn.svm import LinearSVC
+from sklearn.metrics import f1_score
+
 import training
 import settings
 from utils import save_checkpoint, load_checkpoint
+from newsgroups.cbs import generate_cbs_features
 
 
 parser = argparse.ArgumentParser(description='Main File')
@@ -41,9 +45,11 @@ args.cuda = not args.no_cuda and torch.cuda.is_available()
 prepare_data = importlib.import_module(f'{args.dataset}.pu_biased_n')
 params = prepare_data.params
 Net = prepare_data.Net
-train_data = prepare_data.train_data
-test_data = prepare_data.test_data
-train_labels = prepare_data.train_labels
+if args.dataset == 'newsgroups':
+    NetCBS = prepare_data.NetCBS
+train_data_orig = prepare_data.train_data
+test_data_orig = prepare_data.test_data
+train_labels_orig = prepare_data.train_labels
 test_labels = prepare_data.test_labels
 
 
@@ -58,7 +64,7 @@ if args.random_seed is not None:
     params['\nrandom_seed'] = args.random_seed
 
 if args.ppe_save_path is not None:
-    params['ppe_save_name'] = args.ppe_save_path
+    params['\nppe_save_name'] = args.ppe_save_path
 
 if args.ppe_load_path is not None:
     params['ppe_load_name'] = args.ppe_load_path
@@ -119,6 +125,14 @@ non_negative = params['\nnon_negative']
 nn_threshold = params['nn_threshold']
 nn_rate = params['nn_rate']
 
+cbs_feature = params.get('\ncbs_feature', False)
+cbs_feature_later = params.get('cbs_feature_later', False)
+cbs_alpha = params.get('cbs_alpha', 10)
+cbs_beta = params.get('cbs_beta', 4)
+n_select_features = params.get('n_select_features', 0)
+svm = params.get('svm', False)
+svm_C = params.get('svm_C', 1)
+
 pu_prob_est = params['\npu_prob_est']
 use_true_post = params['use_true_post']
 
@@ -141,7 +155,7 @@ beta = params.get('beta', 1)
 
 random_seed = params['\nrandom_seed']
 
-ppe_save_name = params.get('ppe_save_name', None)
+ppe_save_name = params.get('\nppe_save_name', None)
 ppe_load_name = params.get('ppe_load_name', None)
 
 log_dir = 'logs/MNIST'
@@ -221,38 +235,6 @@ def pick_u_data(data, labels, n):
     return data[selected_u], posteriors(labels[selected_u])
 
 
-np.random.seed(random_seed)
-random.seed(random_seed)
-torch.manual_seed(random_seed)
-torch.cuda.manual_seed(random_seed)
-torch.backends.cudnn.deterministic = True
-
-
-idxs = np.random.permutation(len(train_data))
-
-valid_data = train_data[idxs][u_cut:]
-valid_labels = train_labels[idxs][u_cut:]
-train_data = train_data[idxs][:u_cut]
-train_labels = train_labels[idxs][:u_cut]
-
-
-u_set = torch.utils.data.TensorDataset(
-    *pick_u_data(train_data, train_labels, u_num))
-u_validation = pick_u_data(valid_data, valid_labels, uv_num)
-
-p_set = torch.utils.data.TensorDataset(
-    *pick_p_data(train_data, train_labels, p_num))
-p_validation = pick_p_data(valid_data, valid_labels, pv_num)
-
-sn_set = torch.utils.data.TensorDataset(
-    *pick_sn_data(train_data, train_labels, sn_num))
-sn_validation = pick_sn_data(valid_data, valid_labels, snv_num)
-
-n_set = torch.utils.data.TensorDataset(
-    *pick_n_data(train_data, train_labels, n_num))
-n_validation = pick_n_data(valid_data, valid_labels, nv_num)
-
-
 t_labels = torch.zeros(test_labels.size())
 
 for i in range(num_classes):
@@ -263,6 +245,113 @@ for i in range(num_classes):
     else:
         t_labels[test_labels == i] = 0
 
+
+# accs = []
+# f1s = []
+#
+# for i in range(1, 11):
+#
+#     np.random.seed(i)
+#     random.seed(i)
+#     torch.manual_seed(i)
+#     torch.cuda.manual_seed(i)
+#     torch.backends.cudnn.deterministic = True
+#
+#     idxs = np.random.permutation(len(train_data_orig))
+#
+#     valid_data = train_data_orig[idxs][u_cut:]
+#     valid_labels = train_labels_orig[idxs][u_cut:]
+#     train_data = train_data_orig[idxs][:u_cut]
+#     train_labels = train_labels_orig[idxs][:u_cut]
+#
+#     u_data, u_pos = pick_u_data(train_data, train_labels, u_num)
+#     p_data, p_pos = pick_p_data(train_data, train_labels, p_num)
+#     sn_data, sn_pos = pick_sn_data(train_data, train_labels, sn_num)
+#     uv_data, uv_pos = pick_u_data(valid_data, valid_labels, uv_num)
+#     pv_data, pv_pos = pick_p_data(valid_data, valid_labels, pv_num)
+#     snv_data, snv_pos = pick_sn_data(valid_data, valid_labels, snv_num)
+#
+#     if cbs_feature:
+#         cbs_features = generate_cbs_features(
+#             p_data, sn_data, u_data,
+#             pv_data, snv_data, uv_data,
+#             test_data_orig, n_select_features=n_select_features,
+#             alpha=cbs_alpha, beta=cbs_beta)
+#         p_data, sn_data, u_data, pv_data, snv_data, uv_data, test_data = \
+#             [torch.tensor(data) for data in cbs_features]
+#         Net = NetCBS
+#     else:
+#         test_data = test_data_orig
+#
+#     clf = LinearSVC(max_iter=5000, C=svm_C)
+#     labels = np.concatenate(
+#         [np.ones(p_data.shape[0]), -np.ones(sn_data.shape[0])])
+#     clf.fit(np.concatenate([p_data, sn_data]), labels)
+#     acc = clf.score(test_data, t_labels.numpy())
+#     f1 = f1_score(t_labels.numpy(), clf.predict(test_data))
+#     accs.append(acc)
+#     f1s.append(f1)
+#     print('Accuracy: {:.2f}'.format(acc*100))
+#     print('F1-score: {:.2f}'.format(f1*100))
+#
+# print('Avg Accuracy: {:.2f}'.format(np.mean(accs)*100))
+# print('Std Accuracy: {:.2f}'.format(np.std(accs)*100))
+# print('Avg F1: {:.2f}'.format(np.mean(f1s)*100))
+# print('Std F1: {:.2f}'.format(np.std(f1s)*100))
+
+
+np.random.seed(random_seed)
+random.seed(random_seed)
+torch.manual_seed(random_seed)
+torch.cuda.manual_seed(random_seed)
+torch.backends.cudnn.deterministic = True
+
+
+idxs = np.random.permutation(len(train_data_orig))
+
+valid_data = train_data_orig[idxs][u_cut:]
+valid_labels = train_labels_orig[idxs][u_cut:]
+train_data = train_data_orig[idxs][:u_cut]
+train_labels = train_labels_orig[idxs][:u_cut]
+
+
+u_data, u_pos = pick_u_data(train_data, train_labels, u_num)
+p_data, p_pos = pick_p_data(train_data, train_labels, p_num)
+sn_data, sn_pos = pick_sn_data(train_data, train_labels, sn_num)
+uv_data, uv_pos = pick_u_data(valid_data, valid_labels, uv_num)
+pv_data, pv_pos = pick_p_data(valid_data, valid_labels, pv_num)
+snv_data, snv_pos = pick_sn_data(valid_data, valid_labels, snv_num)
+
+if cbs_feature:
+    cbs_features = generate_cbs_features(
+        p_data, sn_data, u_data,
+        pv_data, snv_data, uv_data,
+        test_data_orig, n_select_features=n_select_features,
+        alpha=cbs_alpha, beta=cbs_beta)
+    p_data, sn_data, u_data, pv_data, snv_data, uv_data, test_data = \
+        [torch.tensor(data) for data in cbs_features]
+    Net = NetCBS
+else:
+    test_data = test_data_orig
+
+
+# u_pos = torch.rand_like(u_pos)
+u_set = torch.utils.data.TensorDataset(u_data, u_pos)
+u_validation = uv_data, uv_pos
+
+p_set = torch.utils.data.TensorDataset(p_data, p_pos)
+p_validation = pv_data, pv_pos
+
+sn_set = torch.utils.data.TensorDataset(sn_data, sn_pos)
+sn_validation = snv_data, snv_pos
+
+if not cbs_feature:
+    # Not considering cbs feature here
+    n_set = torch.utils.data.TensorDataset(
+        *pick_n_data(train_data, train_labels, n_num))
+    n_validation = pick_n_data(valid_data, valid_labels, nv_num)
+
+
 test_posteriors = posteriors(test_labels)
 test_idxs = np.argwhere(t_labels != 0).reshape(-1)
 
@@ -272,6 +361,17 @@ test_set = torch.utils.data.TensorDataset(
     test_posteriors[test_idxs])
 
 # print(len(test_set.tensors[0]))
+
+
+if svm:
+    clf = LinearSVC(max_iter=5000)
+    labels = np.concatenate(
+        [np.ones(p_data.shape[0]), -np.ones(sn_data.shape[0])])
+    clf.fit(np.concatenate([p_data, sn_data]), labels)
+    print('Accuracy: {:.2f}'.format(
+          clf.score(test_data, t_labels.numpy())*100))
+    print('F1-score: {:.2f}'.format(
+          f1_score(t_labels.numpy(), clf.predict(test_data))*100))
 
 
 if pu_prob_est and ppe_load_name is None:
@@ -323,6 +423,29 @@ if (partial_n or (iwpn and (adjust_p or adjust_sn))) and not use_true_post:
 sep_value = np.percentile(
     u_set.tensors[1].numpy().reshape(-1), int((1-pi-true_rho)*u_per*100))
 print('\nsep_value =', sep_value)
+
+
+if cbs_feature_later:
+    cbs_features = generate_cbs_features(
+        p_data.numpy(), sn_data.numpy(), u_data.numpy(),
+        pv_data.numpy(), snv_data.numpy(), uv_data.numpy(),
+        test_data.numpy(), n_select_features=n_select_features,
+        alpha=cbs_alpha, beta=cbs_beta)
+    p_data, sn_data, u_data, pv_data, snv_data, uv_data, test_data = \
+        [torch.tensor(data) for data in cbs_features]
+    Net = NetCBS
+
+u_set = torch.utils.data.TensorDataset(u_data, u_set.tensors[1])
+u_validation = uv_data, u_validation[1]
+
+p_set = torch.utils.data.TensorDataset(p_data, p_set.tensors[1])
+p_validation = pv_data, p_validation[1]
+
+sn_set = torch.utils.data.TensorDataset(sn_data, sn_set.tensors[1])
+sn_validation = snv_data, sn_validation[1]
+
+test_set = torch.utils.data.TensorDataset(
+    test_data[test_idxs], test_set.tensors[1], test_set.tensors[2])
 
 
 if partial_n:
@@ -463,8 +586,8 @@ if unbiased_pn:
                 milestones=milestones, lr_d=lr_d,
                 validation_momentum=validation_momentum,
                 start_validation_epoch=start_validation_epoch)
-        cls.train(p_set, n_set, test_set, p_batch_size, n_batch_size,
-                  p_validation, n_validation,
+        cls.train(p_set, sn_set, test_set, p_batch_size, sn_batch_size,
+                  p_validation, sn_validation,
                   cls_training_epochs, convex_epochs=convex_epochs)
 
 

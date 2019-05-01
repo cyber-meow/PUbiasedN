@@ -223,6 +223,8 @@ class ClassifierFrom2(Classifier):
             loss.backward()
             self.optimizer.step()
             if (i+1) % settings.validation_interval == 0:
+                # print(p_validation[0].shape)
+                # print(n_validation[0].shape)
                 self.validation(p_validation, n_validation, convex)
         self.optimizer.zero_grad()
         return np.mean(np.array(losses))

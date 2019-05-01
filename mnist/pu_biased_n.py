@@ -33,8 +33,8 @@ positive_classes = [0, 2, 4, 6, 8]
 negative_classes = [1, 3, 5, 7, 9]
 
 # neg_ps = [0, 0.03, 0, 0.15, 0, 0.3, 0, 0.02, 0, 0.5]
-neg_ps = [0, 0.2, 0, 0.2, 0, 0.2, 0, 0.2, 0, 0.2]
-# neg_ps = [0, 1/3, 0, 1/3, 0, 1/3, 0, 0, 0, 0]
+# neg_ps = [0, 0.2, 0, 0.2, 0, 0.2, 0, 0.2, 0, 0.2]
+neg_ps = [0, 1/3, 0, 1/3, 0, 1/3, 0, 0, 0, 0]
 # neg_ps = [1/6, 1/6, 1/6, 1/6, 0, 1/6, 1/6, 0, 0, 0]
 # neg_ps = [0, 0, 0, 0, 0, 1/4, 0, 1/4, 1/4, 1/4]
 
@@ -67,10 +67,10 @@ nn_rate = 1
 
 settings.validation_interval = 50
 
-pu_prob_est = True
+pu_prob_est = False
 use_true_post = False
 
-partial_n = True
+partial_n = False
 hard_label = False
 
 pn_then_pu = False
@@ -78,7 +78,7 @@ pu_then_pn = False
 iwpn = False
 pu = False
 pnu = False
-unbiased_pn = False
+unbiased_pn = True
 
 vat = False
 ent = False
@@ -87,9 +87,6 @@ alpha = 1
 beta = 0.8
 
 random_seed = 10
-
-sets_save_name = None
-sets_load_name = None
 
 ppe_save_name = None
 # ppe_load_name = 'weights/MNIST/135N/500P+500N_135N_1e-3_1'
@@ -148,9 +145,7 @@ params = OrderedDict([
     ('alpha', alpha),
     ('beta', beta),
     ('\nrandom_seed', random_seed),
-    ('\nsets_save_name', sets_save_name),
-    ('sets_load_name', sets_load_name),
-    ('ppe_save_name', ppe_save_name),
+    ('\nppe_save_name', ppe_save_name),
     ('ppe_load_name', ppe_load_name),
 ])
 
