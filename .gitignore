@@ -101,6 +101,8 @@ ENV/
 .mypy_cache/
 
 data/
+!data/20newsgroups/elmo*
+!data/*elmo*.py
 running_results/
 plots/
 tmp/
