@@ -100,8 +100,11 @@ ENV/
 # mypy
 .mypy_cache/
 
-data/
-!data/20newsgroups/elmo*
+data/20newsgroups/*
+data/CIFAR10
+data/UCI
+data/MNIST
+!data/20newsgroups/elmo*.json
 !data/*elmo*.py
 running_results/
 plots/

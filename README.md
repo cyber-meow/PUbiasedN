@@ -36,3 +36,7 @@ where `dataset` is either `mnist`, `cifar10` or `newsgroups` and
 `parameter-path` is a `yml` file containing the hyperparameters of the experiment.
 The hyperparameter files used for the results shown in Table 1 can be found under
 the `params/` directory.
+
+## 20newgroups preprocessing
+
+To prepare the ELMO embedding of the 20newsgroups dataset. Please download the ELMO 5.5B pre-trained model from https://allennlp.org/elmo (elmo_2x4096_512_2048cnn_2xhighway_5.5B_weights) and put it under `data/20newsgroups/`; then run the two files `train_elmo_prepare.py` and `test_elmo_prepare.py` located in this same directory.
