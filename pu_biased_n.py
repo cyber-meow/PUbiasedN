@@ -48,7 +48,7 @@ test_labels = prepare_data.test_labels
 
 if args.params_path is not None:
     with open(args.params_path) as f:
-        params_file = yaml.load(f)
+        params_file = yaml.load(f, Loader=yaml.FullLoader)
     for key in params_file:
         params[key] = params_file[key]
 
