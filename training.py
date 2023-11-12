@@ -198,7 +198,6 @@ class ClassifierFrom2(Classifier):
 
     def train_step(self, p_loader, n_loader,
                    p_validation, n_validation, convex):
-        self.scheduler.step()
         self.times += 1
         losses = []
         for i, x in enumerate(p_loader):
@@ -209,6 +208,7 @@ class ClassifierFrom2(Classifier):
             losses.append(true_loss.item())
             loss.backward()
             self.optimizer.step()
+            self.scheduler.step()
             if (i+1) % settings.validation_interval == 0:
                 # print(p_validation[0].shape)
                 # print(n_validation[0].shape)
