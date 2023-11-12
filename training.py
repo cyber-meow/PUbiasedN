@@ -31,11 +31,11 @@ class Training(object):
         self.test_accuracies = []
 
     def init_optimizer(self):
-        self.scheduler = optim.lr_scheduler.MultiStepLR(
-            self.optimizer, milestones=self.milestones, gamma=self.lr_d)
         self.optimizer = optim.Adam(
             self.model.parameters(),
-            lr=self.lr, weight_decay=self.weight_decay, amsgrad=True)
+            lr=self.lr, weight_decay=self.weight_decay, amsgrad=True)            
+        self.scheduler = optim.lr_scheduler.MultiStepLR(
+            self.optimizer, milestones=self.milestones, gamma=self.lr_d)
 
 
     def validation(self, *args):
