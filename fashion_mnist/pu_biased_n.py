@@ -32,10 +32,10 @@ rho = 0.25
 
 #Footwear vs Non-Footwear Problem
 positive_classes = [5, 7, 9]
-negative_classes = [1, 2, 3, 4, 5, 8]
+negative_classes = [0, 1, 2, 3, 4, 6, 8]
 
 # neg_ps = [0, 0.03, 0, 0.15, 0, 0.3, 0, 0.02, 0, 0.5]
-neg_ps = [0, 1/3, 0, 1/3, 0, 1/3, 0, 0, 0, 0]
+neg_ps = [1/3 , 1/3, 1/3, 1/3, 1/3, 0, 1/3, 0, 1/3, 0]
 
 non_pu_fraction = 0.7
 balanced = False
