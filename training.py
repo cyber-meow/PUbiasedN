@@ -33,9 +33,10 @@ class Training(object):
     def init_optimizer(self):
         self.optimizer = optim.Adam(
             self.model.parameters(),
-            lr=self.lr, weight_decay=self.weight_decay, amsgrad=True)
+            lr=self.lr, weight_decay=self.weight_decay, amsgrad=True)            
         self.scheduler = optim.lr_scheduler.MultiStepLR(
             self.optimizer, milestones=self.milestones, gamma=self.lr_d)
+
 
     def validation(self, *args):
         _, validation_loss = self.compute_loss(*args, validation=True)
@@ -86,7 +87,7 @@ class Training(object):
             auc_score = sklearn.metrics.roc_auc_score(target, pred)
         # Return result for each class
         precision, recall, f1_score, _ =\
-            sklearn.metrics.precision_recall_fscore_support(target, pred)
+            sklearn.metrics.precision_recall_fscore_support(target, pred, zero_division=0)
         n_negative = np.sum(target == 0)
         n_false_positive = np.sum(np.logical_and(pred == 1, target == 0))
         if to_print:

@@ -48,9 +48,9 @@ test_labels = prepare_data.test_labels
 
 if args.params_path is not None:
     with open(args.params_path) as f:
-        params_file = yaml.load(f)
+        params_file = yaml.load(f, Loader=yaml.FullLoader)
     for key in params_file:
-        params[key] = params_file[key]
+        params[key] = params_file[key] # the params file overwrites the default params from pu_biased_n.py in the mnist folder
 
 
 if args.random_seed is not None:
@@ -148,8 +148,8 @@ visualize = False
 
 priors = params.get('\npriors', None)
 if priors is None:
-    priors = [1/num_classes for _ in range(num_classes)]
-
+    priors = [1/num_classes for _ in range(num_classes)] #[0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+print(priors)
 
 settings.dtype = torch.cuda.FloatTensor if args.cuda else torch.FloatTensor
 
@@ -300,7 +300,7 @@ train_data = train_data_orig[idxs][:u_cut]
 train_labels = train_labels_orig[idxs][:u_cut]
 
 
-u_data, u_pos = pick_u_data(train_data, train_labels, u_num)
+u_data, u_pos = pick_u_data(train_data, train_labels, u_num) #u_pos is u_posteriors
 p_data, p_pos = pick_p_data(train_data, train_labels, p_num)
 sn_data, sn_pos = pick_sn_data(train_data, train_labels, sn_num)
 uv_data, uv_pos = pick_u_data(valid_data, valid_labels, uv_num)
