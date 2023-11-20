@@ -6,6 +6,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 import torchvision.transforms as transforms
+import numpy as np
+import tice
 
 import settings
 
@@ -24,12 +26,13 @@ uv_num = 1200
 
 u_cut = 40000
 
-pi = 0.49
+pi = 0.3
 true_rho = 0.25
 rho = 0.25
 
-positive_classes = [0, 2, 4, 6, 8]
-negative_classes = [1, 3, 5, 7, 9]
+#Footwear vs Non-Footwear Problem
+positive_classes = [5, 7, 9]
+negative_classes = [1, 2, 3, 4, 5, 8]
 
 # neg_ps = [0, 0.03, 0, 0.15, 0, 0.3, 0, 0.02, 0, 0.5]
 neg_ps = [0, 1/3, 0, 1/3, 0, 1/3, 0, 0, 0, 0]
@@ -154,6 +157,9 @@ train_data = train_data.unsqueeze(1)
 train_labels = fashion_mnist.train_labels
 
 test_data = torch.zeros(fashion_mnist_test.test_data.size())
+
+tice_folds = np.random.randint(5, size=len(train_data))
+(c_est, _) = tice.tice(train_data, train_data, 5, tice_folds)
 
 for i, (image, _) in enumerate(fashion_mnist_test):
     test_data[i] = image
