@@ -1,4 +1,4 @@
-# PUbiasedN - Forked from https://github.com/cyber-meow/PUbiasedN
+# PUbiasedN - Forked from https://github.com/cyber-meow/PUbiasedN for class project
 
 PyTorch implementation for experiments in the paper
 [Classification from Positive, Unlabeled and Biased Negative Data](https://arxiv.org/abs/1810.00846).
