@@ -21,16 +21,10 @@ PyTorch implementation for experiments in the paper
 1. Python >= 3.6
 2. PyTorch >= 0.4.0, scikit-learn, NumPy
 3. yaml to load parameters
-4. nltk, allennlp, h5py to prepare the 20newsgroups ELMO embedding
 
-## Usage
-
-The file `pu_biased_n.py` allows to reproduce most of the experimental results
-described in the paper:
-
-```
-python(3) pu_biased_n.py --dataset [dataset] --params-path [parameter-path] --random-seed [random-seed]
-```
+## Implement on Google Collab
+1. Download the above Project.ipnyb file and add it to a directory on Google Drive
+2. Change the path in Cell 3 as indicated to the directory in step 1.
 
 where `dataset` is either `mnist` and `fashion_mnist` and
 `parameter-path` is a `yml` file containing the hyperparameters of the experiment.
