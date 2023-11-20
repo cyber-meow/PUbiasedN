@@ -15,6 +15,7 @@ from sklearn.metrics import f1_score
 import training
 import settings
 from utils import save_checkpoint, load_checkpoint
+from newsgroups.cbs import generate_cbs_features
 
 
 parser = argparse.ArgumentParser(description='Main File')
@@ -23,7 +24,7 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
 
 parser.add_argument('--dataset', type=str, default='mnist',
-                    help='Name of dataset: mnist or fashion_mnist')
+                    help='Name of dataset: mnist, cifar10 or newsgroups')
 
 parser.add_argument('--random-seed', type=int, default=None)
 parser.add_argument('--params-path', type=str, default=None)
@@ -37,6 +38,8 @@ args.cuda = not args.no_cuda and torch.cuda.is_available()
 prepare_data = importlib.import_module(f'{args.dataset}.pu_biased_n')
 params = prepare_data.params
 Net = prepare_data.Net
+if args.dataset == 'newsgroups':
+    NetCBS = prepare_data.NetCBS
 train_data_orig = prepare_data.train_data
 test_data_orig = prepare_data.test_data
 train_labels_orig = prepare_data.train_labels
@@ -47,7 +50,7 @@ if args.params_path is not None:
     with open(args.params_path) as f:
         params_file = yaml.load(f, Loader=yaml.FullLoader)
     for key in params_file:
-        params[key] = params_file[key]
+        params[key] = params_file[key] # the params file overwrites the default params from pu_biased_n.py in the mnist folder
 
 
 if args.random_seed is not None:
@@ -145,8 +148,8 @@ visualize = False
 
 priors = params.get('\npriors', None)
 if priors is None:
-    priors = [1/num_classes for _ in range(num_classes)]
-
+    priors = [1/num_classes for _ in range(num_classes)] #[0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+print(priors)
 
 settings.dtype = torch.cuda.FloatTensor if args.cuda else torch.FloatTensor
 
@@ -297,12 +300,24 @@ train_data = train_data_orig[idxs][:u_cut]
 train_labels = train_labels_orig[idxs][:u_cut]
 
 
-u_data, u_pos = pick_u_data(train_data, train_labels, u_num)
+u_data, u_pos = pick_u_data(train_data, train_labels, u_num) #u_pos is u_posteriors
 p_data, p_pos = pick_p_data(train_data, train_labels, p_num)
 sn_data, sn_pos = pick_sn_data(train_data, train_labels, sn_num)
 uv_data, uv_pos = pick_u_data(valid_data, valid_labels, uv_num)
 pv_data, pv_pos = pick_p_data(valid_data, valid_labels, pv_num)
 snv_data, snv_pos = pick_sn_data(valid_data, valid_labels, snv_num)
+
+if cbs_feature:
+    cbs_features = generate_cbs_features(
+        p_data, sn_data, u_data,
+        pv_data, snv_data, uv_data,
+        test_data_orig, n_select_features=n_select_features,
+        alpha=cbs_alpha, beta=cbs_beta)
+    p_data, sn_data, u_data, pv_data, snv_data, uv_data, test_data = \
+        [torch.tensor(data) for data in cbs_features]
+    Net = NetCBS
+else:
+    test_data = test_data_orig
 
 
 # u_pos = torch.rand_like(u_pos)
@@ -314,6 +329,12 @@ p_validation = pv_data, pv_pos
 
 sn_set = torch.utils.data.TensorDataset(sn_data, sn_pos)
 sn_validation = snv_data, snv_pos
+
+if not cbs_feature:
+    # Not considering cbs feature here
+    n_set = torch.utils.data.TensorDataset(
+        *pick_n_data(train_data, train_labels, n_num))
+    n_validation = pick_n_data(valid_data, valid_labels, nv_num)
 
 
 test_posteriors = posteriors(test_labels)
@@ -387,6 +408,16 @@ sep_value = np.percentile(
     u_set.tensors[1].numpy().reshape(-1), int((1-pi-true_rho)*u_per*100))
 print('\nsep_value =', sep_value)
 
+
+if cbs_feature_later:
+    cbs_features = generate_cbs_features(
+        p_data.numpy(), sn_data.numpy(), u_data.numpy(),
+        pv_data.numpy(), snv_data.numpy(), uv_data.numpy(),
+        test_data.numpy(), n_select_features=n_select_features,
+        alpha=cbs_alpha, beta=cbs_beta)
+    p_data, sn_data, u_data, pv_data, snv_data, uv_data, test_data = \
+        [torch.tensor(data) for data in cbs_features]
+    Net = NetCBS
 
 u_set = torch.utils.data.TensorDataset(u_data, u_set.tensors[1])
 u_validation = uv_data, u_validation[1]
