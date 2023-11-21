@@ -39,4 +39,5 @@ the `params/` directory.
 2. Estimate Class Prior using either of the TiCE (Estimation of Class Prior using Decision Tree Induction )
 
 ## Attempts (These were not included in the paper due to time constraints)
-1. 
+1. Integrating Tice method to estimate class prior on UCI Breast Cancer Dataset but was not able to run PUbN experiments successfully. Kept giving series of error which could not be resolved in time.
+2. Added the Food101 dataset but pre-processing kept failing. 
